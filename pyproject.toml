@@ -18,3 +18,9 @@ snipster = "snipster:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest-cov>=7.0.0",
+    "pytest-mock>=3.15.1",
+]
