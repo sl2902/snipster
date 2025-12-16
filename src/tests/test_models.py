@@ -15,7 +15,7 @@ def simple_snippet():
 def snippet_factory():
     """Factory function for creating custom snippets"""
 
-    def _create(**kwargs):
+    def _create(**kwargs):  # pragma: no cover
         default = {
             "title": "Hello World",
             "code": "print(Hello World)",
@@ -23,7 +23,7 @@ def snippet_factory():
         default.update(kwargs)
         return Snippet(**default)
 
-    return _create
+    return _create  # pragma: no cover
 
 
 def test_model_snippet_favorite_default(simple_snippet):
@@ -80,7 +80,7 @@ class TestLanguageEnums:
 
     def test_model_snippet_language_default(self, simple_snippet):
         snippet = simple_snippet
-        assert snippet.language == "Python"
+        assert snippet.language == Language.PYTHON
 
     def test_language_enum_invalid_value(self):
         """Test that invalid language raises ValueError"""
