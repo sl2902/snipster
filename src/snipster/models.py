@@ -10,7 +10,9 @@ from snipster.database_manager import DatabaseManager
 
 
 class Language(str, Enum):
-    PYTHON = "python"
+    PYTHON = "Python"
+    JAVASCRIPT = "JavaScript"
+    TYPESCRIPT = "TypeScript"
 
 
 class Snippet(SQLModel, table=True):
@@ -40,24 +42,76 @@ class Snippet(SQLModel, table=True):
 
 if __name__ == "__main__":  # pragma: no cover
     db_manager = DatabaseManager()
-    logger.info(db_manager.select_by_snippet_id(Snippet, 1))
+    logger.info(db_manager.select_by_id(Snippet, 1))
     results = db_manager.select_all(Snippet)
     logger.info(f" Number of records fetched: {len(results)}")
+    if results:
+        logger.info(results)
     logger.info("Testing Insert statement")
+    # snippet1 = Snippet(
+    #     title="Hello World",
+    #     code="print('Hello, World!')",
+    #     description="Basic Python hello world",
+    #     language=Language.PYTHON,
+    #     tags="beginner, tutorial",
+    # )
+
+    # snippet2 = Snippet(
+    #     title="For Loop",
+    #     code="for i in range(10):\n    print(i)",
+    #     language=Language.PYTHON,
+    #     tags="loops, basics",
+    # )
     snippet1 = Snippet(
         title="Hello World",
         code="print('Hello, World!')",
         description="Basic Python hello world",
-        language=Language.PYTHON,
+        language="Python",
         tags="beginner, tutorial",
     )
 
     snippet2 = Snippet(
+        title="Hello World",
+        code="print('Hello, World!')",
+        description="Basic Python hello world",
+        language="Python",
+        tags="beginner, tutorial",
+    )
+
+    snippet3 = Snippet(
         title="For Loop",
         code="for i in range(10):\n    print(i)",
-        language=Language.PYTHON,
+        language="Python",
         tags="loops, basics",
     )
 
-    snippets = [snippet1, snippet2]
-    db_manager.insert_records(Snippet, snippets)
+    snippet4 = Snippet(
+        title="For Loop",
+        code="for i in range(10):\n    print(i)",
+        language="Python",
+        tags="loops, basics",
+    )
+
+    snippet5 = Snippet(
+        title="List Comprehension",
+        code="squares = [x**2 for x in range(10)]",
+        language="Python",
+        tags="list, comprehension",
+    )
+
+    snippet6 = Snippet(
+        title="Dictionary Example",
+        code="my_dict = {'key': 'value', 'number': 42}",
+        language="Python",
+        tags="dictionary, basics",
+    )
+
+    snippet7 = Snippet(
+        title="Function Definition",
+        code="def greet(name):\n    return f'Hello, {name}!'",
+        language="Python",
+        tags="function, basics",
+    )
+
+    snippets = [snippet1, snippet2, snippet3, snippet4, snippet5, snippet6, snippet7]
+    db_manager.insert_records(Snippet, snippets, batch_size=3)
