@@ -1,6 +1,7 @@
 from datetime import datetime
 
 import pytest
+from pydantic_core import ValidationError
 
 from snipster.models import Language, Snippet
 
@@ -95,3 +96,10 @@ class TestLanguageEnums:
 
         assert python1 == python2
         assert python1 != javascript
+
+
+def test_title_field_validation(snippet_factory):
+    test_data = {"title": "XX", "code": "print('test')"}
+
+    with pytest.raises(ValidationError, match="Title must be at least 3 characters"):
+        snippet_factory(**test_data)
