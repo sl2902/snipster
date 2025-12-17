@@ -40,7 +40,7 @@ class Snippet(SQLModel, table=True):
 
     # https://github.com/fastapi/sqlmodel/issues/52#issuecomment-2495817760
     model_config = ConfigDict(validate_assignment=True, from_attributes=True)
-    __table_args__ = {"extend_existing": True}
+    # __table_args__ = {"extend_existing": True}
 
     @field_validator("title")
     def validate_title(cls, v):
