@@ -115,3 +115,20 @@ if __name__ == "__main__":  # pragma: no cover
 
     snippets = [snippet1, snippet2, snippet3, snippet4, snippet5, snippet6, snippet7]
     db_manager.insert_records(Snippet, snippets, batch_size=3)
+
+    for _ in range(2):
+        snippet7 = Snippet(
+            title="Function Definition",
+            code="def greet(name):\n    return f'Hello, {name}!'",
+            language=Language.PYTHON,
+            tags="function, basics",
+        )
+        is_inserted = db_manager.insert_record(Snippet, snippet7)
+        logger.info(f"Record inserted status {is_inserted}")
+
+    snippet_id = 5
+    is_deleted = db_manager.delete_record(Snippet, snippet_id)
+    if is_deleted:
+        logger.info(f"Snippet with id {snippet_id} has been deleted")
+    else:
+        logger.warning(f"Snippet with id {snippet_id} does not exist")
