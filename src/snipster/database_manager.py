@@ -3,7 +3,12 @@
 from typing import List, Optional, Type
 
 from loguru import logger
-from sqlalchemy.exc import IntegrityError, NoResultFound, OperationalError
+from sqlalchemy.exc import (
+    IntegrityError,
+    MultipleResultsFound,
+    NoResultFound,
+    OperationalError,
+)
 from sqlmodel import (
     Session,
     SQLModel,
@@ -72,10 +77,45 @@ class DatabaseManager:
                 logger.warning(f"No result found in model {model.__name__}")
 
     @staticmethod
-    def _retry_failed_batches(session, records: List[SQLModel]):
-        """Attempt failed batches"""
+    def _load_batches(session, records: List[SQLModel]):
+        """Load batches into table"""
         session.add_all(records)
         session.commit()
+        for record in records:
+            session.refresh(record)
+
+    def insert_record(
+        self,
+        model: Type[SQLModel],
+        record: SQLModel,
+    ) -> bool:
+        """
+        Insert single record into the database with duplicate handling.
+
+        Args:
+            model: The SQLModel class to insert a single record
+            record: Single model instance to insert
+
+        Returns:
+            bool
+        """
+        with Session(self.engine) as session:
+            logger.debug("Inserting single model instance")
+            try:
+                self._load_batches(session, [record])
+            except IntegrityError:
+                logger.warning("Duplicate record found in table.")
+                session.rollback()
+                return False
+            except OperationalError as err:
+                logger.error(
+                    f"Insert statement failed for model {model.__name__}: {err}"
+                )
+                session.rollback()
+                return False
+
+        logger.info(f"Successfully inserted record into model {model.__name__}")
+        return True
 
     def insert_records(
         self,
@@ -100,17 +140,17 @@ class DatabaseManager:
             for row in range(0, n_rows, batch_size):
                 logger.debug(f"Processing batch {row}..{row + batch_size}")
                 try:
-                    self._retry_failed_batches(session, records[row : row + batch_size])
+                    self._load_batches(session, records[row : row + batch_size])
                 except IntegrityError:
                     logger.warning(
-                        f"Duplicate record found in batch {row}..{row + batch_size}. Skipping"
+                        f"Duplicate record found in batch {row}..{row + batch_size}."
                     )
                     session.rollback()
                     logger.info("Retrying failed batches")
                     failed_batches = records[row : row + batch_size]
                     for record in failed_batches:
                         try:
-                            self._retry_failed_batches(session, [record])
+                            self._load_batches(session, [record])
                         except IntegrityError:
                             session.rollback()
                             n_dups += 1
@@ -128,6 +168,47 @@ class DatabaseManager:
         )
 
         return n_rows_inserted
+
+    def delete_record(self, model: SQLModel, id: int) -> bool:
+        """
+        Delete single record from the database.
+
+        Args:
+            model: The SQLModel class to insert a single record
+            id: Unique record identifer
+
+        Returns:
+            bool
+        """
+        with Session(self.engine) as session:
+            logger.debug("Deleting single model instance")
+            try:
+                statement = select(model).where(model.id == id)
+                record = session.exec(statement)
+                to_delete = record.one()
+                logger.debug(f"Record to delete {to_delete}")
+                session.delete(to_delete)
+                session.commit()
+            except NoResultFound:
+                logger.warning(
+                    f"Record with id {id} does not exist in model {model.__name__}"
+                )
+                return False
+            except MultipleResultsFound as err:
+                session.rollback()
+                logger.error(
+                    f"Multiple results found for id {id} in. model {model.__name__}: {err}"
+                )
+                raise
+            except OperationalError as err:
+                logger.error(
+                    f"Delete statement failed for id {id} in model {model.__name__}: {err}"
+                )
+                session.rollback()
+                return False
+
+        logger.info(f"Successfully deleted record id {id} from model {model.__name__}")
+        return True
 
 
 if __name__ == "__main__":  # pragma: no cover
