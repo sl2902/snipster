@@ -1,5 +1,5 @@
 import pytest
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import IntegrityError, MultipleResultsFound, OperationalError
 
 from snipster.database_manager import DatabaseManager
 from snipster.models import Language, Snippet
@@ -95,6 +95,35 @@ def multiple_snippets_with_duplicates():
     ]
 
 
+class TestInsertSingleRecord:
+    """Group all single insert-related tests"""
+
+    def test_insert_record(self, db_manager, sample_snippet):
+        is_inserted = db_manager.insert_record(Snippet, sample_snippet)
+        actual = db_manager.select_by_id(Snippet, 1)
+
+        print(f"DB Manager ID: {id(db_manager)}")
+        assert is_inserted is True
+        assert actual.title == "Hello World"
+        assert actual.language == "Python"
+
+    def test_insert_duplicate_record(self, db_manager):
+        print(f"DB Manager ID: {id(db_manager)}")
+        for _ in range(2):
+            snippet = Snippet(
+                title="Function Definition",
+                code="def greet(name):\n    return f'Hello, {name}!'",
+                language=Language.PYTHON,
+                tags="function, basics",
+            )
+            is_inserted = db_manager.insert_record(Snippet, snippet)
+
+        actual = db_manager.select_all(Snippet)
+
+        assert is_inserted is False
+        assert len(actual) == 1
+
+
 class TestInsertRecords:
     """Group all insert-related tests"""
 
@@ -188,8 +217,39 @@ class TestSelectOperations:
         assert results[0].title == "Hello World"
 
 
+class TestDeleteSingleRecordOperations:
+    """Group all delete-related tests"""
+
+    def test_delete_single_record(self, db_manager, sample_snippet):
+        db_manager.insert_record(Snippet, sample_snippet)
+
+        snippet = db_manager.select_by_id(Snippet, 1)
+        assert len([snippet]) == 1
+
+        is_deleted = db_manager.delete_record(Snippet, snippet.id)
+        assert is_deleted is True
+
+        snippet = db_manager.select_by_id(Snippet, 1)
+        assert snippet is None
+
+    def test_delete_no_record(self, db_manager):
+        is_deleted = db_manager.delete_record(Snippet, 1)
+        assert is_deleted is False
+
+    def test_delete_multi_result_records(self, mocker, db_manager):
+        mock_session = mocker.patch("snipster.database_manager.Session")
+
+        mock_session.return_value.__enter__.return_value.exec.return_value.one.side_effect = MultipleResultsFound(
+            "Mock DB error", None, None
+        )
+
+        with pytest.raises(MultipleResultsFound):
+            db_manager.delete_record(Snippet, 1)
+
+
 @pytest.mark.parametrize(
-    "error_scenarios", ["insert_records", "select_by_id", "select_all"]
+    "error_scenarios",
+    ["delete_record", "insert_record", "insert_records", "select_by_id", "select_all"],
 )
 def test_operational_errors_are_logged(
     db_manager, mocker, sample_snippet, error_scenarios
@@ -198,11 +258,27 @@ def test_operational_errors_are_logged(
     mock_logger = mocker.patch("snipster.database_manager.logger")
     mock_session = mocker.patch("snipster.database_manager.Session")
 
-    if error_scenarios == "insert_records":
+    if error_scenarios == "delete_record":
+        mock_session.return_value.__enter__.return_value.commit.side_effect = (
+            OperationalError("Mock DB error", None, None)
+        )
+        db_manager.delete_record(Snippet, 1)
+    elif error_scenarios == "insert_records":
         mock_session.return_value.__enter__.return_value.commit.side_effect = (
             OperationalError("Mock DB error", None, None)
         )
         db_manager.insert_records(Snippet, [sample_snippet])
+    elif error_scenarios == "insert_record":
+        mock_session.return_value.__enter__.return_value.commit.side_effect = (
+            IntegrityError("Mock DB error", None, None)
+        )
+        db_manager.insert_record(Snippet, sample_snippet)
+        mock_logger.warning.assert_called_once()
+
+        mock_session.return_value.__enter__.return_value.commit.side_effect = (
+            OperationalError("Mock DB error", None, None)
+        )
+        db_manager.insert_record(Snippet, sample_snippet)
     elif error_scenarios == "select_by_id":
         mock_session.return_value.__enter__.return_value.get.side_effect = (
             OperationalError("Mock DB error", None, None)
@@ -214,4 +290,5 @@ def test_operational_errors_are_logged(
         )
         db_manager.select_all(Snippet)
 
-    mock_logger.error.assert_called_once()
+    if error_scenarios != "insert_record":
+        mock_logger.error.assert_called_once()
