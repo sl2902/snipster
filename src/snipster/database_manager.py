@@ -19,10 +19,9 @@ from sqlmodel import (
 
 class DatabaseManager:
     def __init__(self, db_url: str = "sqlite:///snippets.db", echo: bool = False):
-        if not db_url:
+        if db_url is None or db_url.strip() == "":
             raise ValueError("db_url cannot be empty")
-        self.db_url = db_url
-        self.engine = create_engine(self.db_url, echo=echo)
+        self.engine = create_engine(db_url, echo=echo)
         self.create_db_and_models()
 
     def create_db_and_models(self):
