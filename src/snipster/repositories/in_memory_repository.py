@@ -12,11 +12,12 @@ class InMemorySnippetRepository(SnippetRepository):
     """In-memory implementation of the abstract base class"""
 
     def __init__(self):
-        self._data: dict[str, Snippet] = {}
+        self._data: dict[int, Snippet] = {}
+        self._next_id = 1
 
     def add(self, snippet: Snippet) -> None:
-        _id = max(self._data.keys(), default=0) + 1
-        self._data[_id] = snippet
+        self._data[self._next_id] = snippet
+        self._next_id += 1
 
     def list(self) -> List[Snippet]:
         return list(self._data.values())
