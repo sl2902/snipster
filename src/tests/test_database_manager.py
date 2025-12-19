@@ -95,6 +95,25 @@ def multiple_snippets_with_duplicates():
     ]
 
 
+class TestConstructorValidation:
+    """Group all constructor-related tests"""
+
+    def test_constructor_rejects_none_url(self):
+        """Test that None db_url is rejected"""
+        with pytest.raises(ValueError, match="db_url cannot be empty"):
+            DatabaseManager(db_url=None)
+
+    def test_constructor_rejects_empty_url(self):
+        """Test that None db_url is rejected"""
+        with pytest.raises(ValueError, match="db_url cannot be empty"):
+            DatabaseManager(db_url="")
+
+    def test_constructor_rejects_whitespace_url(self):
+        """Test that None db_url is rejected"""
+        with pytest.raises(ValueError, match="db_url cannot be empty"):
+            DatabaseManager(db_url="  ")
+
+
 class TestInsertSingleRecord:
     """Group all single insert-related tests"""
 
