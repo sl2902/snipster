@@ -6,9 +6,10 @@ from loguru import logger
 
 from snipster.database_manager import DatabaseManager
 from snipster.models import Language, Snippet
+from snipster.repositories.repository import SnippetRepository
 
 
-class SQLModelRepository:
+class SQLModelRepository(SnippetRepository):
     """SQLModel implementation of the abstract base class"""
 
     def __init__(self, db_url: str = "sqlite:///snippets.db", echo: bool = False):
