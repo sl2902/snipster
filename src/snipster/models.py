@@ -11,12 +11,35 @@ from snipster.database_manager import DatabaseManager
 
 
 class Language(str, Enum):
+    """Supported programming languages for code snippets.
+
+    Inherits from str to allow direct string comparison in queries
+    and JSON serialization.
+    """
+
     PYTHON = "Python"
     JAVASCRIPT = "JavaScript"
     TYPESCRIPT = "TypeScript"
 
 
 class Snippet(SQLModel, table=True):
+    """A code snippet with metadata for organization and retrieval.
+
+    Snippets are uniquely identified by their title + language combination,
+    allowing the same title across different programming languages.
+
+    Attributes:
+        id: Auto-generated primary key.
+        title: Human-readable name (minimum 3 characters).
+        code: The actual code content.
+        description: Optional explanation of what the code does.
+        language: Programming language (defaults to Python).
+        tags: Comma-separated labels for categorization.
+        created_at: Timestamp of creation.
+        updated_at: Timestamp of last modification.
+        favorite: Flag for quick-access snippets.
+    """
+
     id: int | None = Field(default=None, primary_key=True)
     title: str = Field(..., description="Title of the snippet")
     code: str = Field(..., description="Code snippet")
@@ -43,6 +66,7 @@ class Snippet(SQLModel, table=True):
     # __table_args__ = {"extend_existing": True}
 
     @field_validator("title")
+    @classmethod
     def validate_title(cls, v):
         if len(v) < 3:
             raise ValueError("Title must be at least 3 characters")
