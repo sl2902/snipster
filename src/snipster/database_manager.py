@@ -1,7 +1,8 @@
 """Database manager works with any SQLModel"""
 
-from typing import List, Optional, Type
+from typing import Type
 
+from decouple import config
 from loguru import logger
 from sqlalchemy.exc import (
     IntegrityError,
@@ -18,43 +19,48 @@ from sqlmodel import (
 
 
 class DatabaseManager:
-    def __init__(self, db_url: str = "sqlite:///snippets.db", echo: bool = False):
-        if db_url is None or db_url.strip() == "":
+    def __init__(self, db_url: str | None = None, echo: bool = False):
+        if db_url is None:
+            db_url = config("DATABASE_URL", default="sqlite:///snippets.db")
+
+        if db_url.strip() == "":
             raise ValueError("db_url cannot be empty")
-        self.engine = create_engine(db_url, echo=echo)
+
+        self.db_url = db_url
+        self.engine = create_engine(self.db_url, echo=echo)
         self.create_db_and_models()
 
     def create_db_and_models(self):
-        """Create databse and models/tables"""
+        """Create database and models/tables"""
         SQLModel.metadata.create_all(self.engine)
         logger.info("Database and models created")
 
-    def select_by_id(self, model: Type[SQLModel], id: int) -> Optional[SQLModel | None]:
+    def select_by_id(self, model: Type[SQLModel], pk: int) -> SQLModel | None:
         """
         Fetch a single record by its primary key.
 
         Args:
             model: The SQLModel class to query
-            id: Primary key value of the record to retrieve
+            pk: Primary key value of the record to retrieve
 
         Returns:
             The matching record if found, None otherwise
+
+        Raises:
+            OperationalError: If the database operation fails.
         """
         with Session(self.engine) as session:
             try:
-                return session.get(model, id)
+                return session.get(model, pk)
             except OperationalError as err:
                 logger.error(
-                    f"Select by id {id} on model {model.__name__} failed: {err}"
+                    f"Select by id {pk} on model {model.__name__} failed: {err}"
                 )
-            except NoResultFound:  # pragma: no cover
-                logger.warning(
-                    f"No result found for id {id} from model {model.__name__}"
-                )
+                raise
 
     def select_all(
         self, model: Type[SQLModel], limit: int = None
-    ) -> Optional[List[SQLModel] | None]:
+    ) -> list[SQLModel] | None:
         """
         Fetch all records from a model table.
 
@@ -64,6 +70,9 @@ class DatabaseManager:
 
         Returns:
             List of all matching records, or empty list if none found
+
+        Raises:
+            OperationalError: If the database operation fails.
         """
         with Session(self.engine) as session:
             try:
@@ -74,11 +83,12 @@ class DatabaseManager:
                 logger.error(
                     f"Select all records on model {model.__name__} failed: {err}"
                 )
+                raise
             except NoResultFound:  # pragma: no cover
                 logger.warning(f"No result found in model {model.__name__}")
 
     @staticmethod
-    def _load_batches(session, records: List[SQLModel]):
+    def _load_batches(session, records: list[SQLModel]):
         """Load batches into table"""
         session.add_all(records)
         session.commit()
@@ -121,8 +131,8 @@ class DatabaseManager:
     def insert_records(
         self,
         model: Type[SQLModel],
-        records: List[SQLModel],
-        batch_size: int = 1,
+        records: list[SQLModel],
+        batch_size: int = int(config("DEFAULT_BATCH_SIZE", 1)),
     ) -> int:
         """
         Insert records into the database with duplicate handling.
