@@ -10,6 +10,7 @@ requires-python = ">=3.13"
 dependencies = [
     "loguru>=0.7.3",
     "sqlmodel>=0.0.27",
+    "python-decouple==3.8",
 ]
 
 [project.scripts]

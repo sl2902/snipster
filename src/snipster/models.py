@@ -11,12 +11,35 @@ from snipster.database_manager import DatabaseManager
 
 
 class Language(str, Enum):
+    """Supported programming languages for code snippets.
+
+    Inherits from str to allow direct string comparison in queries
+    and JSON serialization.
+    """
+
     PYTHON = "Python"
     JAVASCRIPT = "JavaScript"
     TYPESCRIPT = "TypeScript"
 
 
 class Snippet(SQLModel, table=True):
+    """A code snippet with metadata for organization and retrieval.
+
+    Snippets are uniquely identified by their title + language combination,
+    allowing the same title across different programming languages.
+
+    Attributes:
+        id: Auto-generated primary key.
+        title: Human-readable name (minimum 3 characters).
+        code: The actual code content.
+        description: Optional explanation of what the code does.
+        language: Programming language (defaults to Python).
+        tags: Comma-separated labels for categorization.
+        created_at: Timestamp of creation.
+        updated_at: Timestamp of last modification.
+        favorite: Flag for quick-access snippets.
+    """
+
     id: int | None = Field(default=None, primary_key=True)
     title: str = Field(..., description="Title of the snippet")
     code: str = Field(..., description="Code snippet")
@@ -43,6 +66,7 @@ class Snippet(SQLModel, table=True):
     # __table_args__ = {"extend_existing": True}
 
     @field_validator("title")
+    @classmethod
     def validate_title(cls, v):
         if len(v) < 3:
             raise ValueError("Title must be at least 3 characters")
@@ -115,3 +139,20 @@ if __name__ == "__main__":  # pragma: no cover
 
     snippets = [snippet1, snippet2, snippet3, snippet4, snippet5, snippet6, snippet7]
     db_manager.insert_records(Snippet, snippets, batch_size=3)
+
+    for _ in range(2):
+        snippet7 = Snippet(
+            title="Function Definition",
+            code="def greet(name):\n    return f'Hello, {name}!'",
+            language=Language.PYTHON,
+            tags="function, basics",
+        )
+        is_inserted = db_manager.insert_record(Snippet, snippet7)
+        logger.info(f"Record inserted status {is_inserted}")
+
+    snippet_id = 5
+    is_deleted = db_manager.delete_record(Snippet, snippet_id)
+    if is_deleted:
+        logger.info(f"Snippet with id {snippet_id} has been deleted")
+    else:
+        logger.warning(f"Snippet with id {snippet_id} does not exist")
