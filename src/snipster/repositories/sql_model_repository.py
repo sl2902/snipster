@@ -12,7 +12,7 @@ from snipster.repositories.repository import SnippetRepository
 class SQLModelRepository(SnippetRepository):
     """SQLModel implementation of the abstract base class"""
 
-    def __init__(self, db_url: str = "sqlite:///snippets.db", echo: bool = False):
+    def __init__(self, db_url: str | None = None, echo: bool = False):
         self.db_url = db_url
         self.db_manager = DatabaseManager(self.db_url, echo)
 

@@ -4,7 +4,7 @@ from typing import List
 
 from loguru import logger
 
-from snipster.models import Snippet
+from snipster import Snippet
 from snipster.repositories.repository import SnippetRepository
 
 
