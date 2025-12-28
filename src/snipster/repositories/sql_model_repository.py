@@ -36,6 +36,20 @@ class SQLModelRepository(SnippetRepository):
         else:
             logger.warning("Found no record with id {id} to delete")
 
+    def search(self, term: str, *, language: str | None = None) -> List[Snippet]:
+        pass
+
+    def toggle_favourite(self, snippet_id: int) -> None:
+        pass
+
+    def tags(
+        self, snippet_id: int, /, *tags: str, remove: bool = False, sort: bool = True
+    ) -> None:
+        pass
+
+    def update_tags(self, snippet_id: int) -> None:
+        pass
+
 
 if __name__ == "__main__":  # pragma: no cover
     sql_repo = SQLModelRepository()

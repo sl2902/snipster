@@ -82,6 +82,20 @@ class JSONSnippetRepository(SnippetRepository):
                     f.write("\n")
             logger.info(f"Snippet id {snippet_id} removed from JSON file")
 
+    def search(self, term: str, *, language: str | None = None) -> List[Snippet]:
+        pass
+
+    def toggle_favourite(self, snippet_id: int) -> None:
+        pass
+
+    def tags(
+        self, snippet_id: int, /, *tags: str, remove: bool = False, sort: bool = True
+    ) -> None:
+        pass
+
+    def update_tags(self, snippet_id: int) -> None:
+        pass
+
 
 if __name__ == "__main__":  # pragma: no cover
     json_repo = JSONSnippetRepository()
