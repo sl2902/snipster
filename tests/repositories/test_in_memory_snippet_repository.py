@@ -1,6 +1,6 @@
 import pytest
 
-from snipster import Snippet
+from snipster import Language, Snippet
 from snipster.repositories.in_memory_repository import InMemorySnippetRepository
 
 
@@ -97,3 +97,74 @@ def test_add_after_delete_increments_id(repo):
 
     assert repo.get(2) == snippet2
     assert repo.get(1) is None
+
+
+def test_search_term_in_title(repo):
+    """Test whether search term is in snippet title"""
+    snippet1 = Snippet(title="first_title", code="code1")
+
+    repo.add(snippet1)
+    all_snippets = repo.search("first")
+
+    assert len(all_snippets) == 1
+    assert all_snippets[0].title == snippet1.title
+
+
+def test_search_python_term_in_code(repo):
+    """Test whether search term is in snippet `code` in Python"""
+    snippet1 = Snippet(title="first_title", code="code1")
+    snippet2 = Snippet(title="second_title", code="code2")
+    snippet3 = Snippet(title="third_itle", code="code3", language=Language.JAVASCRIPT)
+
+    repo.add(snippet1)
+    repo.add(snippet2)
+    repo.add(snippet3)
+    all_snippets = repo.search("code", language="python")
+    codes = {snippet.code for snippet in all_snippets}
+
+    assert len(all_snippets) == 2
+    assert codes == {snippet1.code, snippet2.code}
+
+
+def test_search_term_in_description(repo):
+    """Test whether search term is in snippet `description`"""
+    snippet1 = Snippet(title="first_title", code="code1", description="Describe code1")
+    snippet2 = Snippet(title="second_title", code="code2", description="Describe code2")
+    snippet3 = Snippet(title="third_itle", code="code3", language=Language.JAVASCRIPT)
+
+    repo.add(snippet1)
+    repo.add(snippet2)
+    repo.add(snippet3)
+    all_snippets = repo.search("code1")
+
+    assert len(all_snippets) == 1
+    assert all_snippets[0].description == snippet1.description
+
+
+def test_search_term_not_found_error(repo, snippet_factory):
+    """Test ValueError due to term not found"""
+    snippet1 = snippet_factory()
+
+    repo.add(snippet1)
+
+    with pytest.raises(ValueError):
+        repo.search("missing_term")
+
+
+def test_toggle_favourite(repo, snippet_factory):
+    """Test toggle snippet `favourite`"""
+    snippet_factory()
+
+    snippet = repo.get(1)
+    assert snippet.favorite is False
+
+    repo.toggle_favourite(1)
+    snippet = repo.get(1)
+    assert snippet.favorite is True
+
+    repo.toggle_favourite(1)
+    snippet = repo.get(1)
+    assert snippet.favorite is False
+
+    with pytest.raises(KeyError):
+        repo.toggle_favourite(999)
