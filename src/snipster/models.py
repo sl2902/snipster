@@ -47,7 +47,7 @@ class Snippet(SQLModel, table=True):
         default=None, description="Description of the code snippet"
     )
     language: Language = Field(
-        default=Language.PYTHON.value,
+        default=Language.PYTHON,
         description="Enum describing the programming language",
     )
     tags: str | None = Field(
