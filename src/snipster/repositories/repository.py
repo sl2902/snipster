@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from typing import List
 
-from snipster.models import Snippet
+from snipster import Snippet
 
 
 class SnippetRepository(ABC):  # pragma: no cover
@@ -21,4 +21,22 @@ class SnippetRepository(ABC):  # pragma: no cover
 
     @abstractmethod
     def delete(self, id: int) -> None:
+        pass
+
+    @abstractmethod
+    def search(self, term: str, *, language: str | None = None) -> List[Snippet]:
+        pass
+
+    @abstractmethod
+    def toggle_favourite(self, snippet_id: int) -> None:
+        pass
+
+    @abstractmethod
+    def tags(
+        self, snippet_id: int, /, *tags: str, remove: bool = False, sort: bool = True
+    ) -> None:
+        pass
+
+    @abstractmethod
+    def update_tags(self, snippet_id: int) -> None:
         pass
