@@ -36,7 +36,3 @@ class SnippetRepository(ABC):  # pragma: no cover
         self, snippet_id: int, /, *tags: str, remove: bool = False, sort: bool = True
     ) -> None:
         pass
-
-    @abstractmethod
-    def update_tags(self, snippet_id: int) -> None:
-        pass
