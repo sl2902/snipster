@@ -4,6 +4,7 @@ from typing import Type
 
 from decouple import config
 from loguru import logger
+from sqlalchemy import func
 from sqlalchemy.exc import (
     IntegrityError,
     MultipleResultsFound,
@@ -86,6 +87,37 @@ class DatabaseManager:
                 raise
             except NoResultFound:  # pragma: no cover
                 logger.warning(f"No result found in model {model.__name__}")
+
+    def select_with_filter(
+        self, model: Type[SQLModel], col: str, term: str = ""
+    ) -> list[SQLModel] | None:
+        """
+        Filter records by partial matching from a model table.
+
+        Args:
+            model: The SQLModel class to query
+            col: Model field to filter on
+            term: Pattern to match (optional)
+
+        Returns:
+            List of all matching records, or empty list if none found
+
+        Raises:
+            OperationalError: If the database operation fails.
+        """
+        with Session(self.engine) as session:
+            try:
+                column = getattr(model, col)
+                statement = select(model).filter(
+                    func.coalesce(column, "").ilike(f"%{term}%")
+                )
+                results = session.exec(statement)
+                return results.all()
+            except OperationalError as err:
+                logger.error(
+                    f"Select by filter on model {model.__name__} failed: {err}"
+                )
+                raise
 
     @staticmethod
     def _load_batches(session, records: list[SQLModel]):
