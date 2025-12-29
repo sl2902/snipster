@@ -168,3 +168,52 @@ def test_toggle_favourite(repo, snippet_factory):
 
     with pytest.raises(KeyError):
         repo.toggle_favourite(999)
+
+
+def test_snippet_add_tags(repo, snippet_factory):
+    """Test add tags to snippet"""
+    snippet_factory()
+
+    repo.tags(1, "tag1", "tag2", "tag4", "tag3")
+    snippet_with_tags = repo.get(1)
+
+    all_tags = snippet_with_tags.tags.split(", ")
+    assert len(all_tags) == 4
+    assert all_tags == ["tag1", "tag2", "tag3", "tag4"]
+
+
+def test_snippet_remove_tags(repo, snippet_factory):
+    """Test remove tags from snippet"""
+    snippet_factory()
+
+    repo.tags(1, "tag1", "tag2", "tag4", "tag3")
+    repo.tags(1, "tag2", "tag3", remove=True)
+    snippet_with_tags = repo.get(1)
+
+    all_tags = snippet_with_tags.tags.split(", ")
+    assert len(all_tags) == 2
+    assert all_tags == ["tag1", "tag4"]
+
+
+def test_snippet_unsort_tags_then_sort_tags(repo, snippet_factory):
+    """Test unsorted tags followed by sort tags in snippet"""
+    snippet_factory()
+
+    repo.tags(1, "tag1", "tag2", "tag4", "tag3", sort=False)
+
+    repo.tags(1, "tag2", sort=False, remove=True)
+    snippet_with_unsorted_tags = repo.get(1)
+    all_tags = snippet_with_unsorted_tags.tags.split(", ")
+
+    assert len(all_tags) == 3
+    assert all_tags == ["tag1", "tag4", "tag3"]
+
+    repo.tags(1, "tag1", "tag2", "tag4", "tag3")
+    snippet_with_sorted_tags = repo.get(1)
+    all_tags = snippet_with_sorted_tags.tags.split(", ")
+
+    assert len(all_tags) == 4
+    assert all_tags == ["tag1", "tag2", "tag3", "tag4"]
+
+    with pytest.raises(KeyError):
+        repo.tags(999, "tag1")
