@@ -76,21 +76,22 @@ class InMemorySnippetRepository(SnippetRepository):
         snippet = self.get(snippet_id)
         if snippet:
             logger.info(f"Updating tags {tags} for snippet {snippet_id}")
-            if sort:
-                tags_str = ", ".join(sorted(tags))
-            else:
-                tags_str = ", ".join(tags)
+            existing_tags = snippet.tags.split(", ") if snippet.tags else []
+
             if not remove:
-                snippet.tags = tags_str
-            else:
-                tags_list = snippet.tags.split(", ")
                 for tag in tags:
-                    if tag in tags_list:
-                        tags_list.remove(tag)
-                if sort:
-                    snippet.tags = ", ".join(sorted(tags_list))
-                else:
-                    snippet.tags = ", ".join(tags_list)
+                    if tag not in existing_tags:
+                        existing_tags.append(tag)
+            else:
+                for tag in tags:
+                    if tag in existing_tags:
+                        existing_tags.remove(tag)
+
+            if sort:
+                snippet.tags = ", ".join(sorted(existing_tags))
+            else:
+                snippet.tags = ", ".join(existing_tags)
+
         else:
             logger.error(f"Snippet id {snippet_id} not found")
             raise KeyError(f"Snippet id {snippet_id} not found")
