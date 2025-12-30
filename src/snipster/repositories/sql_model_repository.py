@@ -37,18 +37,64 @@ class SQLModelRepository(SnippetRepository):
             logger.warning("Found no record with id {id} to delete")
 
     def search(self, term: str, *, language: str | None = None) -> List[Snippet]:
-        pass
+        cols_to_search = ["title", "code", "description"]
+        for col in cols_to_search:
+            snippets = self.db_manager.select_with_filter(Snippet, col, term)
+            if snippets:
+                break
+        else:
+            logger.error(f"No matches found for term {term} in the Snippets model")
+            raise ValueError(f"No matches found for term {term} in the Snippets model")
+        if language:
+            lang_filtered_snippets = []
+            for snippet in snippets:
+                if snippet.language.value.lower() == language.lower():
+                    lang_filtered_snippets.append(snippet)
+            return lang_filtered_snippets
+        return snippets
 
     def toggle_favourite(self, snippet_id: int) -> None:
-        pass
+        snippet = self.get(snippet_id)
+        if snippet:
+            if snippet.favorite is False:
+                snippet.favorite = True
+            else:
+                snippet.favorite = False
+        else:
+            logger.error(f"Snippet with id {snippet_id} not found")
+            raise KeyError(f"Snippet with id {snippet_id} not found")
+
+        self.db_manager.update(Snippet, snippet_id, "favorite", snippet.favorite)
+        logger.info(f"Successfully updated snippet id {snippet_id}")
 
     def tags(
         self, snippet_id: int, /, *tags: str, remove: bool = False, sort: bool = True
     ) -> None:
-        pass
+        snippet = self.get(snippet_id)
+        if snippet:
+            logger.info(f"Updating tags {tags} for snippet {snippet_id}")
+            existing_tags = snippet.tags.split(", ") if snippet.tags else []
 
-    def update_tags(self, snippet_id: int) -> None:
-        pass
+            if not remove:
+                for tag in tags:
+                    if tag not in existing_tags:
+                        existing_tags.append(tag)
+            else:
+                for tag in tags:
+                    if tag in existing_tags:
+                        existing_tags.remove(tag)
+
+            if sort:
+                snippet.tags = ", ".join(sorted(existing_tags))
+            else:
+                snippet.tags = ", ".join(existing_tags)
+
+        else:
+            logger.error(f"Snippet id {snippet_id} not found")
+            raise KeyError(f"Snippet id {snippet_id} not found")
+
+        self.db_manager.update(Snippet, pk=1, col="tags", value=snippet.tags)
+        logger.info(f"Successfully updated tags for snippet {snippet_id}")
 
 
 if __name__ == "__main__":  # pragma: no cover
