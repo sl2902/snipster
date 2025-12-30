@@ -1,6 +1,6 @@
 """Database manager works with any SQLModel"""
 
-from typing import Type
+from typing import Any, Type
 
 from decouple import config
 from loguru import logger
@@ -212,13 +212,13 @@ class DatabaseManager:
 
         return n_rows_inserted
 
-    def delete_record(self, model: SQLModel, id: int) -> bool:
+    def delete_record(self, model: SQLModel, pk: int) -> bool:
         """
         Delete single record from the database.
 
         Args:
             model: The SQLModel class to insert a single record
-            id: Unique record identifer
+            pk: Unique record identifer
 
         Returns:
             bool
@@ -226,7 +226,7 @@ class DatabaseManager:
         with Session(self.engine) as session:
             logger.debug("Deleting single model instance")
             try:
-                statement = select(model).where(model.id == id)
+                statement = select(model).where(model.id == pk)
                 record = session.exec(statement)
                 to_delete = record.one()
                 logger.debug(f"Record to delete {to_delete}")
@@ -234,24 +234,58 @@ class DatabaseManager:
                 session.commit()
             except NoResultFound:
                 logger.warning(
-                    f"Record with id {id} does not exist in model {model.__name__}"
+                    f"Record with id {pk} does not exist in model {model.__name__}"
                 )
                 return False
             except MultipleResultsFound as err:
                 session.rollback()
                 logger.error(
-                    f"Multiple results found for id {id} in. model {model.__name__}: {err}"
+                    f"Multiple results found for id {pk} in. model {model.__name__}: {err}"
                 )
                 raise
             except OperationalError as err:
                 logger.error(
-                    f"Delete statement failed for id {id} in model {model.__name__}: {err}"
+                    f"Delete statement failed for id {pk} in model {model.__name__}: {err}"
                 )
                 session.rollback()
                 return False
 
-        logger.info(f"Successfully deleted record id {id} from model {model.__name__}")
+        logger.info(f"Successfully deleted record id {pk} from model {model.__name__}")
         return True
+
+    def update(self, model: SQLModel, pk: int, col: str, value: Any) -> None:
+        """
+        Update single record from the database.
+
+        Args:
+            model: The SQLModel class to update a single record
+            pk: Unique record identifer
+            col: Model field to update
+            value: New value to replace the old value
+
+        Returns:
+            None
+
+        Raises:
+            OperationalError: If the database operation fails.
+        """
+        with Session(self.engine) as session:
+            logger.debug("Updating single model instance id {pk}")
+            try:
+                statement = select(model).where(model.id == pk)
+                record = session.exec(statement)
+                model_obj = record.one()
+
+                setattr(model_obj, col, value)
+                session.add(model_obj)
+                session.commit()
+                session.refresh(model_obj)
+            except OperationalError as err:
+                logger.error(
+                    f"Delete statement failed for id {pk} in model {model.__name__}: {err}"
+                )
+                session.rollback()
+                raise
 
 
 if __name__ == "__main__":  # pragma: no cover
