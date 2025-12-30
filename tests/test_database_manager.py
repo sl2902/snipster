@@ -317,6 +317,25 @@ class TestDeleteSingleRecordOperations:
             db_manager.delete_record(Snippet, 1)
 
 
+class TestUpdateSingleRecordOperatons:
+    """Group all update-related tests"""
+
+    def test_update_single_record(self, db_manager, sample_snippet):
+        db_manager.insert_record(Snippet, sample_snippet)
+
+        snippet = db_manager.select_by_id(Snippet, 1)
+        assert snippet is not None
+        assert snippet.favorite is False
+
+        db_manager.update(Snippet, 1, col="favorite", value=True)
+        snippet = db_manager.select_by_id(Snippet, 1)
+        assert snippet.favorite is True
+
+        db_manager.update(Snippet, 1, col="favorite", value=False)
+        snippet = db_manager.select_by_id(Snippet, 1)
+        assert snippet.favorite is False
+
+
 @pytest.mark.parametrize(
     "error_scenarios",
     [
@@ -326,6 +345,7 @@ class TestDeleteSingleRecordOperations:
         "select_by_id",
         "select_all",
         "select_with_filter",
+        "update",
     ],
 )
 def test_operational_errors_are_logged(
@@ -374,6 +394,12 @@ def test_operational_errors_are_logged(
         )
         with pytest.raises(OperationalError):
             db_manager.select_with_filter(Snippet, col="title")
+    elif error_scenarios == "update":
+        mock_session.return_value.__enter__.return_value.exec.side_effect = (
+            OperationalError("Mock DB error", None, None)
+        )
+        with pytest.raises(OperationalError):
+            db_manager.update(Snippet, pk=1, col="favorite", value=True)
 
     if error_scenarios != "insert_record":
         mock_logger.error.assert_called_once()
