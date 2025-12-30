@@ -217,3 +217,20 @@ def test_snippet_unsort_tags_then_sort_tags(repo, snippet_factory):
 
     with pytest.raises(KeyError):
         repo.tags(999, "tag1")
+
+
+def test_duplicate_tags(repo, snippet_factory):
+    """Test adding duplicate tags"""
+    snippet_factory()
+
+    repo.tags(1, "tag1")
+    snippet = repo.get(1)
+
+    assert snippet is not None
+    assert snippet.tags == "tag1"
+
+    repo.tags(1, "tag1", "tag2")
+    snippet = repo.get(1)
+
+    assert len(snippet.tags.split(", ")) == 2
+    assert snippet.tags == "tag1, tag2"
