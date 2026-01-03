@@ -1,5 +1,6 @@
 """Database manager works with any SQLModel"""
 
+from datetime import datetime
 from typing import Any, Type
 
 from decouple import config
@@ -212,7 +213,7 @@ class DatabaseManager:
 
         return n_rows_inserted
 
-    def delete_record(self, model: SQLModel, pk: int) -> bool:
+    def delete_record(self, model: SQLModel, pk: int) -> None:
         """
         Delete single record from the database.
 
@@ -221,7 +222,7 @@ class DatabaseManager:
             pk: Unique record identifer
 
         Returns:
-            bool
+            None
         """
         with Session(self.engine) as session:
             logger.debug("Deleting single model instance")
@@ -233,10 +234,10 @@ class DatabaseManager:
                 session.delete(to_delete)
                 session.commit()
             except NoResultFound:
-                logger.warning(
+                logger.error(
                     f"Record with id {pk} does not exist in model {model.__name__}"
                 )
-                return False
+                raise
             except MultipleResultsFound as err:
                 session.rollback()
                 logger.error(
@@ -248,10 +249,9 @@ class DatabaseManager:
                     f"Delete statement failed for id {pk} in model {model.__name__}: {err}"
                 )
                 session.rollback()
-                return False
+                raise
 
         logger.info(f"Successfully deleted record id {pk} from model {model.__name__}")
-        return True
 
     def update(self, model: SQLModel, pk: int, col: str, value: Any) -> None:
         """
@@ -270,13 +270,14 @@ class DatabaseManager:
             OperationalError: If the database operation fails.
         """
         with Session(self.engine) as session:
-            logger.debug("Updating single model instance id {pk}")
+            logger.debug(f"Updating single model instance id {pk}")
             try:
                 statement = select(model).where(model.id == pk)
                 record = session.exec(statement)
                 model_obj = record.one()
 
                 setattr(model_obj, col, value)
+                setattr(model_obj, "updated_at", datetime.now())
                 session.add(model_obj)
                 session.commit()
                 session.refresh(model_obj)
