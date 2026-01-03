@@ -4,8 +4,9 @@ from typing import List
 
 from loguru import logger
 
+from snipster import Language, Snippet
 from snipster.database_manager import DatabaseManager
-from snipster.models import Language, Snippet
+from snipster.exceptions import SnippetNotFoundError
 from snipster.repositories.repository import SnippetRepository
 
 
@@ -30,11 +31,8 @@ class SQLModelRepository(SnippetRepository):
         return self.db_manager.select_by_id(Snippet, snippet_id)
 
     def delete(self, snippet_id: int) -> None:
-        is_deleted = self.db_manager.delete_record(Snippet, snippet_id)
-        if is_deleted:
-            logger.info("Record id {id} deleted successfully")
-        else:
-            logger.warning("Found no record with id {id} to delete")
+        self.db_manager.delete_record(Snippet, snippet_id)
+        logger.info(f"Record id {id} deleted successfully")
 
     def search(self, term: str, *, language: str | None = None) -> List[Snippet]:
         cols_to_search = ["title", "code", "description"]
@@ -62,7 +60,7 @@ class SQLModelRepository(SnippetRepository):
                 snippet.favorite = False
         else:
             logger.error(f"Snippet with id {snippet_id} not found")
-            raise KeyError(f"Snippet with id {snippet_id} not found")
+            raise SnippetNotFoundError(f"Snippet with id {snippet_id} not found")
 
         self.db_manager.update(Snippet, snippet_id, "favorite", snippet.favorite)
         logger.info(f"Successfully updated snippet id {snippet_id}")
@@ -77,10 +75,12 @@ class SQLModelRepository(SnippetRepository):
 
             if not remove:
                 for tag in tags:
+                    tag = tag.strip()
                     if tag not in existing_tags:
                         existing_tags.append(tag)
             else:
                 for tag in tags:
+                    tag = tag.strip()
                     if tag in existing_tags:
                         existing_tags.remove(tag)
 
@@ -91,9 +91,9 @@ class SQLModelRepository(SnippetRepository):
 
         else:
             logger.error(f"Snippet id {snippet_id} not found")
-            raise KeyError(f"Snippet id {snippet_id} not found")
+            raise SnippetNotFoundError(f"Snippet id {snippet_id} not found")
 
-        self.db_manager.update(Snippet, pk=1, col="tags", value=snippet.tags)
+        self.db_manager.update(Snippet, pk=snippet_id, col="tags", value=snippet.tags)
         logger.info(f"Successfully updated tags for snippet {snippet_id}")
 
 
