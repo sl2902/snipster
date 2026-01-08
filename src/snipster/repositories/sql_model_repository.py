@@ -36,16 +36,21 @@ class SQLModelRepository(SnippetRepository):
 
     def search(self, term: str, *, language: str | None = None) -> List[Snippet]:
         cols_to_search = ["title", "code", "description"]
+        seen_snippets = set()
+        all_snippets = {}
         for col in cols_to_search:
             snippets = self.db_manager.select_with_filter(Snippet, col, term)
-            if snippets:
-                break
-        else:
+            for snippet in snippets:
+                if snippet.id not in seen_snippets:
+                    seen_snippets.add(snippet.id)
+                    all_snippets[snippet.id] = snippet
+
+        if not all_snippets:
             logger.error(f"No matches found for term {term} in the Snippets model")
             raise ValueError(f"No matches found for term {term} in the Snippets model")
         if language:
             lang_filtered_snippets = []
-            for snippet in snippets:
+            for snippet in all_snippets.values():
                 if snippet.language.value.lower() == language.lower():
                     lang_filtered_snippets.append(snippet)
             return lang_filtered_snippets
