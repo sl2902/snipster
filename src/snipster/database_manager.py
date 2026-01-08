@@ -283,7 +283,7 @@ class DatabaseManager:
                 session.refresh(model_obj)
             except OperationalError as err:
                 logger.error(
-                    f"Delete statement failed for id {pk} in model {model.__name__}: {err}"
+                    f"Update statement failed for id {pk} in model {model.__name__}: {err}"
                 )
                 session.rollback()
                 raise
