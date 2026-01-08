@@ -97,13 +97,11 @@ def test_delete_existing_snippet(repo, snippet_factory):
 
 
 def test_delete_non_existent_snippet_does_not_fail(repo, snippet_factory):
-    """Test that deleting non-existent snippet doesn't raise error"""
+    """Test that deleting non-existent snippet raise KeyError"""
     snippet_factory()
 
-    repo.delete(999)
-
-    all_snippets = repo.list()
-    assert len(all_snippets) == 1
+    with pytest.raises(KeyError):
+        repo.delete(999)
 
 
 def test_delete_removes_from_list(repo):
@@ -194,6 +192,51 @@ def test_search_term_not_found_error(repo, snippet_factory):
 
     with pytest.raises(ValueError):
         repo.search("missing_term")
+
+
+def test_search_wildcard_percent_doesnt_match_all(repo):
+    """Test that % is escaped and doesn't match everything"""
+    repo.add(Snippet(title="test1", code="code"))
+    repo.add(Snippet(title="test2", code="code"))
+    repo.add(Snippet(title="100%", code="code"))
+
+    results = repo.search("%")
+
+    assert len(results) == 1
+    assert results[0].title == "100%"
+
+
+def test_search_wildcard_underscore_doesnt_match_all(repo):
+    """Test that _ is escaped and doesn't match everything"""
+    repo.add(Snippet(title="test1", code="code"))
+    repo.add(Snippet(title="test2", code="code"))
+    repo.add(Snippet(title="test_var", code="code"))
+
+    results = repo.search("_")
+
+    assert len(results) == 1
+    assert results[0].title == "test_var"
+
+
+def test_search_backslash_escaping(repo):
+    """Test that backslashes are properly escaped"""
+    repo.add(Snippet(title="C:\\Users", code="code"))
+    repo.add(Snippet(title="normal", code="code"))
+
+    results = repo.search("C:\\")
+
+    assert len(results) == 1
+    assert "C:\\" in results[0].title
+
+
+def test_search_prevents_sql_injection_or_operator(repo, snippet_factory):
+    """Test that OR injection doesn't return all records"""
+    snippet1 = snippet_factory()
+
+    repo.add(snippet1)
+
+    with pytest.raises(ValueError):
+        repo.search("nonexistent' OR '1'='1")
 
 
 def test_toggle_favourite(repo, snippet_factory):
