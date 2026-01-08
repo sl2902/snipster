@@ -105,11 +105,17 @@ class DatabaseManager:
         Raises:
             OperationalError: If the database operation fails.
         """
+        escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         with Session(self.engine) as session:
             try:
+                if not hasattr(model, col):
+                    raise ValueError(
+                        f"Column '{col}' does not exist in model {model.__name__}"
+                    )
+
                 column = getattr(model, col)
                 statement = select(model).filter(
-                    func.coalesce(column, "").ilike(f"%{term}%")
+                    func.coalesce(column, "").ilike(f"%{escaped}%", escape="\\")
                 )
                 results = session.exec(statement)
                 return results.all()
@@ -212,7 +218,7 @@ class DatabaseManager:
 
         return n_rows_inserted
 
-    def delete_record(self, model: SQLModel, pk: int) -> bool:
+    def delete_record(self, model: SQLModel, pk: int) -> None:
         """
         Delete single record from the database.
 
@@ -221,7 +227,10 @@ class DatabaseManager:
             pk: Unique record identifer
 
         Returns:
-            bool
+            None
+
+        Raises:
+            OperationalError: If the database operation fails.
         """
         with Session(self.engine) as session:
             logger.debug("Deleting single model instance")
@@ -233,10 +242,12 @@ class DatabaseManager:
                 session.delete(to_delete)
                 session.commit()
             except NoResultFound:
-                logger.warning(
+                logger.error(
                     f"Record with id {pk} does not exist in model {model.__name__}"
                 )
-                return False
+                raise KeyError(
+                    f"Record with id {pk} does not exist in model {model.__name__}"
+                )
             except MultipleResultsFound as err:
                 session.rollback()
                 logger.error(
@@ -244,14 +255,13 @@ class DatabaseManager:
                 )
                 raise
             except OperationalError as err:
+                session.rollback()
                 logger.error(
                     f"Delete statement failed for id {pk} in model {model.__name__}: {err}"
                 )
-                session.rollback()
-                return False
+                raise
 
         logger.info(f"Successfully deleted record id {pk} from model {model.__name__}")
-        return True
 
     def update(self, model: SQLModel, pk: int, col: str, value: Any) -> None:
         """
@@ -282,7 +292,7 @@ class DatabaseManager:
                 session.refresh(model_obj)
             except OperationalError as err:
                 logger.error(
-                    f"Delete statement failed for id {pk} in model {model.__name__}: {err}"
+                    f"Update statement failed for id {pk} in model {model.__name__}: {err}"
                 )
                 session.rollback()
                 raise
