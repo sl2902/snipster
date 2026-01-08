@@ -1,5 +1,10 @@
 import pytest
-from sqlalchemy.exc import IntegrityError, MultipleResultsFound, OperationalError
+from sqlalchemy.exc import (
+    IntegrityError,
+    MultipleResultsFound,
+    NoResultFound,
+    OperationalError,
+)
 
 from snipster import DatabaseManager, Language, Snippet
 
@@ -286,6 +291,14 @@ class TestSelectOperations:
 
         assert len(select_all_snippets) == len(filter_all_snippets)
 
+    def test_select_filter_with_non_existent_column(
+        self, mocker, db_manager, sample_snippet
+    ):
+        db_manager.insert_records(Snippet, [sample_snippet])
+
+        with pytest.raises(ValueError):
+            db_manager.select_with_filter(Snippet, col="test", term="")
+
 
 class TestDeleteSingleRecordOperations:
     """Group all delete-related tests"""
@@ -296,15 +309,23 @@ class TestDeleteSingleRecordOperations:
         snippet = db_manager.select_by_id(Snippet, 1)
         assert len([snippet]) == 1
 
-        is_deleted = db_manager.delete_record(Snippet, snippet.id)
-        assert is_deleted is True
+        db_manager.delete_record(Snippet, snippet.id)
+        snippet = db_manager.select_by_id(Snippet, 1)
+
+        assert snippet is None
 
         snippet = db_manager.select_by_id(Snippet, 1)
         assert snippet is None
 
-    def test_delete_no_record(self, db_manager):
-        is_deleted = db_manager.delete_record(Snippet, 1)
-        assert is_deleted is False
+    def test_delete_no_record(self, mocker, db_manager):
+        mock_session = mocker.patch("snipster.database_manager.Session")
+
+        mock_session.return_value.__enter__.return_value.exec.return_value.one.side_effect = NoResultFound(
+            "Mock DB error", None, None
+        )
+
+        with pytest.raises(KeyError):
+            db_manager.delete_record(Snippet, 1)
 
     def test_delete_multi_result_records(self, mocker, db_manager):
         mock_session = mocker.patch("snipster.database_manager.Session")
@@ -359,7 +380,8 @@ def test_operational_errors_are_logged(
         mock_session.return_value.__enter__.return_value.commit.side_effect = (
             OperationalError("Mock DB error", None, None)
         )
-        db_manager.delete_record(Snippet, 1)
+        with pytest.raises(OperationalError):
+            db_manager.delete_record(Snippet, 1)
     elif error_scenarios == "insert_records":
         mock_session.return_value.__enter__.return_value.commit.side_effect = (
             OperationalError("Mock DB error", None, None)
