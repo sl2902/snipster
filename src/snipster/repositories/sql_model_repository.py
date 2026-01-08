@@ -32,7 +32,7 @@ class SQLModelRepository(SnippetRepository):
 
     def delete(self, snippet_id: int) -> None:
         self.db_manager.delete_record(Snippet, snippet_id)
-        logger.info(f"Record id {id} deleted successfully")
+        logger.info("Record id {id} deleted successfully")
 
     def search(self, term: str, *, language: str | None = None) -> List[Snippet]:
         cols_to_search = ["title", "code", "description"]
@@ -44,7 +44,6 @@ class SQLModelRepository(SnippetRepository):
                 if snippet.id not in seen_snippets:
                     seen_snippets.add(snippet.id)
                     all_snippets[snippet.id] = snippet
-
         if not all_snippets:
             logger.error(f"No matches found for term {term} in the Snippets model")
             raise ValueError(f"No matches found for term {term} in the Snippets model")
@@ -54,7 +53,7 @@ class SQLModelRepository(SnippetRepository):
                 if snippet.language.value.lower() == language.lower():
                     lang_filtered_snippets.append(snippet)
             return lang_filtered_snippets
-        return snippets
+        return list(all_snippets.values())
 
     def toggle_favourite(self, snippet_id: int) -> None:
         snippet = self.get(snippet_id)
@@ -76,23 +75,7 @@ class SQLModelRepository(SnippetRepository):
         snippet = self.get(snippet_id)
         if snippet:
             logger.info(f"Updating tags {tags} for snippet {snippet_id}")
-            existing_tags = snippet.tags.split(", ") if snippet.tags else []
-
-            if not remove:
-                for tag in tags:
-                    tag = tag.strip()
-                    if tag not in existing_tags:
-                        existing_tags.append(tag)
-            else:
-                for tag in tags:
-                    tag = tag.strip()
-                    if tag in existing_tags:
-                        existing_tags.remove(tag)
-
-            if sort:
-                snippet.tags = ", ".join(sorted(existing_tags))
-            else:
-                snippet.tags = ", ".join(existing_tags)
+            snippet.tags = self.process_tags(snippet.tags, tags, remove, sort)
 
         else:
             logger.error(f"Snippet id {snippet_id} not found")
