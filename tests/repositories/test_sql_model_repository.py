@@ -1,6 +1,7 @@
 import pytest
 
 from snipster import Language, Snippet
+from snipster.exceptions import SnippetNotFoundError
 from snipster.repositories.sql_model_repository import SQLModelRepository
 
 
@@ -254,7 +255,7 @@ def test_toggle_favourite(repo, snippet_factory):
     snippet = repo.get(1)
     assert snippet.favorite is False
 
-    with pytest.raises(KeyError):
+    with pytest.raises(SnippetNotFoundError):
         repo.toggle_favourite(999)
 
 
@@ -303,7 +304,7 @@ def test_snippet_unsort_tags_then_sort_tags(repo, snippet_factory):
     assert len(all_tags) == 4
     assert all_tags == ["tag1", "tag2", "tag3", "tag4"]
 
-    with pytest.raises(KeyError):
+    with pytest.raises(SnippetNotFoundError):
         repo.tags(999, "tag1")
 
 
