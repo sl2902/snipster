@@ -93,6 +93,8 @@ def list(ctx: typer.Context = None):
                 ":star:" if snippet.favorite else "",
                 snippet.created_at.strftime("%Y-%m-%d") if snippet.created_at else "-",
             )
+    if not all_snippets:
+        console.print("[yellow]No snippets found[/yellow]")
     console.print(table)
 
 
@@ -120,6 +122,7 @@ def get(snippet_id: int = typer.Option(..., prompt=True), ctx: typer.Context = N
     else:
         console.print()
         console.print(f"[yellow]No snippet found for id {snippet_id}[/yellow]")
+        raise typer.Exit(code=1)
 
 
 @app.command()
@@ -136,8 +139,10 @@ def delete(snippet_id: int = typer.Option(..., prompt=True), ctx: typer.Context 
         console.print(
             f":cross_mark: [bold red]Snippet '{snippet_id}' not found[/bold red]"
         )
+        raise typer.Exit(code=1)
     except OperationalError as err:
         console.print(f"[bold red] Operational Error: {err}[/bold red]")
+        raise typer.Exit(code=1)
 
 
 @app.command()
@@ -166,8 +171,10 @@ def search(
         console.print(table)
     except ValueError:
         console.print(f"[yellow]No matches found for {term}[/yellow]")
+        raise typer.Exit(code=1)
     except OperationalError as err:
         console.print(f"[bold red] Operational Error: {err}[/bold red]")
+        raise typer.Exit(code=1)
 
 
 @app.command()
@@ -186,6 +193,7 @@ def toggle_favourite(
         console.print(
             f":cross_mark: [bold red]Snippet '{snippet_id}' not found[/bold red]"
         )
+        raise typer.Exit(code=1)
 
 
 @app.command()
@@ -211,7 +219,8 @@ def tags(
         console.print(
             f":cross_mark: [bold red]Snippet '{snippet_id}' not found[/bold red]"
         )
+        raise typer.Exit(code=1)
 
 
 if __name__ == "__main__":
-    app()
+    app()  # pragma: no cover
