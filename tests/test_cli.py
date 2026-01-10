@@ -6,15 +6,15 @@ from typer.testing import CliRunner
 from snipster import Language, Snippet
 from snipster.cli import app
 
-runner = CliRunner(env={"NO_COLOR": "1"})
+runner = CliRunner()
 
 
 @pytest.fixture
 def mock_repo(mocker):
     """Mock repository for CLI tests"""
     mock = mocker.MagicMock()
-    mocker.patch("snipster.cli.create_reposistory", return_value=mock)
-    return mock
+    mocker.patch("snipster.cli.create_repository", return_value=mock)
+    yield mock
 
 
 def strip_ansi(text):
@@ -28,7 +28,6 @@ def test_add_snippet(mock_repo):
     )
 
     assert result.exit_code == 0
-    print(result.stdout)
     assert "Snippet" in result.stdout
     mock_repo.add.assert_called_once()
 
@@ -158,6 +157,17 @@ def test_toggle_favourite_snippet(mock_repo):
     assert "Snippet '1' favourited" in result.stdout
 
 
+def test_toggle_favourite_snippet_not_found(mock_repo):
+    """Test toggle favourite SnippetNotFound error"""
+    from snipster.exceptions import SnippetNotFoundError
+
+    mock_repo.toggle_favourite.side_effect = SnippetNotFoundError("Not found")
+    result = runner.invoke(app, ["toggle-favourite", "--snippet-id", 999])
+
+    assert result.exit_code == 1
+    assert "snippet '999' not found" in strip_ansi(result.stdout.lower())
+
+
 def test_add_with_tags(mock_repo):
     """Test adding snippet with multiple tags"""
     result = runner.invoke(
@@ -173,7 +183,7 @@ def test_add_with_tags(mock_repo):
 def test_remove_tags(mock_repo):
     """Test removing tags from snippet"""
     result = runner.invoke(
-        app, ["tags", "--snippet-id", "1", "--tags", "test1", "--remove"]
+        app, ["tags", "--snippet-id", 1, "--tags", "test1", "--remove"]
     )
     assert result.exit_code == 0
     mock_repo.tags.assert_called_once_with(1, "test1", remove=True, sort=True)
@@ -186,8 +196,8 @@ def test_tags_not_found(mock_repo):
     mock_repo.tags.side_effect = SnippetNotFoundError("Not found")
 
     result = runner.invoke(
-        app, ["tags", "--snippet-id", "999", "--tags", "test", "--no-remove", "--sort"]
+        app, ["tags", "--snippet-id", 999, "--tags", "test", "--no-remove", "--sort"]
     )
 
     assert result.exit_code == 1
-    assert "not found" in result.stdout.lower()
+    assert "snippet '999' not found" in strip_ansi(result.stdout.lower())
