@@ -18,7 +18,7 @@ class ReposistoryType(StrEnum):
     JSON = "json"
 
 
-def create_reposistory(repo_type: str | None = None) -> SnippetRepository:
+def create_repository(repo_type: str | None = None) -> SnippetRepository:
     """
     Factory function to create repository based on type.
 
