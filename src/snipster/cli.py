@@ -8,7 +8,7 @@ from sqlalchemy.exc import NoResultFound, OperationalError
 
 from snipster import Language, Snippet
 from snipster.exceptions import SnippetNotFoundError
-from snipster.repositories.backend import create_reposistory
+from snipster.repositories.backend import create_repository
 
 app = typer.Typer()
 console = Console()
@@ -40,7 +40,7 @@ def init(
         logger.remove()
         logger.add(lambda msg: None, level="ERROR")
 
-    ctx.obj = create_reposistory()
+    ctx.obj = create_repository()
 
 
 @app.command()
