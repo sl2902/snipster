@@ -11,10 +11,12 @@ dependencies = [
     "loguru>=0.7.3",
     "sqlmodel>=0.0.27",
     "python-decouple==3.8",
+    "typer>=0.21.0",
+    "rich>=14.2.0",
 ]
 
 [project.scripts]
-snipster = "snipster:main"
+snipster = "snipster.cli:app"
 
 [build-system]
 requires = ["hatchling"]

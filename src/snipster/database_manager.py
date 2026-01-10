@@ -1,5 +1,6 @@
 """Database manager works with any SQLModel"""
 
+from datetime import datetime
 from typing import Any, Type
 
 from decouple import config
@@ -280,13 +281,14 @@ class DatabaseManager:
             OperationalError: If the database operation fails.
         """
         with Session(self.engine) as session:
-            logger.debug("Updating single model instance id {pk}")
+            logger.debug(f"Updating single model instance id {pk}")
             try:
                 statement = select(model).where(model.id == pk)
                 record = session.exec(statement)
                 model_obj = record.one()
 
                 setattr(model_obj, col, value)
+                setattr(model_obj, "updated_at", datetime.now())
                 session.add(model_obj)
                 session.commit()
                 session.refresh(model_obj)

@@ -4,8 +4,9 @@ from typing import List
 
 from loguru import logger
 
+from snipster import Language, Snippet
 from snipster.database_manager import DatabaseManager
-from snipster.models import Language, Snippet
+from snipster.exceptions import SnippetNotFoundError
 from snipster.repositories.repository import SnippetRepository
 
 
@@ -63,7 +64,7 @@ class SQLModelRepository(SnippetRepository):
                 snippet.favorite = False
         else:
             logger.error(f"Snippet with id {snippet_id} not found")
-            raise KeyError(f"Snippet with id {snippet_id} not found")
+            raise SnippetNotFoundError(f"Snippet with id {snippet_id} not found")
 
         self.db_manager.update(Snippet, snippet_id, "favorite", snippet.favorite)
         logger.info(f"Successfully updated snippet id {snippet_id}")
@@ -78,7 +79,7 @@ class SQLModelRepository(SnippetRepository):
 
         else:
             logger.error(f"Snippet id {snippet_id} not found")
-            raise KeyError(f"Snippet id {snippet_id} not found")
+            raise SnippetNotFoundError(f"Snippet id {snippet_id} not found")
 
         self.db_manager.update(Snippet, pk=snippet_id, col="tags", value=snippet.tags)
         logger.info(f"Successfully updated tags for snippet {snippet_id}")
