@@ -22,7 +22,7 @@ class SQLModelRepository(SnippetRepository):
         if is_inserted:
             logger.info("Added a single record successfully")
         else:
-            logger.warning(f"Duplicate recond found: {snippet}")
+            logger.warning(f"Duplicate record found: {snippet}")
 
     def list(self) -> List[Snippet]:
         return list(self.db_manager.select_all(Snippet))
@@ -32,17 +32,15 @@ class SQLModelRepository(SnippetRepository):
 
     def delete(self, snippet_id: int) -> None:
         self.db_manager.delete_record(Snippet, snippet_id)
-        logger.info("Record id {id} deleted successfully")
+        logger.info(f"Record id {id} deleted successfully")
 
     def search(self, term: str, *, language: str | None = None) -> List[Snippet]:
         cols_to_search = ["title", "code", "description"]
-        seen_snippets = set()
         all_snippets = {}
         for col in cols_to_search:
             snippets = self.db_manager.select_with_filter(Snippet, col, term)
             for snippet in snippets:
-                if snippet.id not in seen_snippets:
-                    seen_snippets.add(snippet.id)
+                if snippet.id not in all_snippets:
                     all_snippets[snippet.id] = snippet
         if not all_snippets:
             logger.error(f"No matches found for term {term} in the Snippets model")
@@ -55,19 +53,21 @@ class SQLModelRepository(SnippetRepository):
             return lang_filtered_snippets
         return list(all_snippets.values())
 
-    def toggle_favourite(self, snippet_id: int) -> None:
+    def toggle_favourite(self, snippet_id: int) -> bool:
         snippet = self.get(snippet_id)
         if snippet:
-            if snippet.favorite is False:
-                snippet.favorite = True
-            else:
-                snippet.favorite = False
+            snippet.favorite = not snippet.favorite
         else:
             logger.error(f"Snippet with id {snippet_id} not found")
             raise SnippetNotFoundError(f"Snippet with id {snippet_id} not found")
 
         self.db_manager.update(Snippet, snippet_id, "favorite", snippet.favorite)
-        logger.info(f"Successfully updated snippet id {snippet_id}")
+        if snippet.favorite:
+            logger.info(f"Successfully favourited snippet id {snippet_id}")
+        else:
+            logger.info(f"Successfully unfavourited snippet id {snippet_id}")
+
+        return snippet.favorite
 
     def tags(
         self, snippet_id: int, /, *tags: str, remove: bool = False, sort: bool = True
