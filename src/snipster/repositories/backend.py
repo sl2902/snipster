@@ -10,7 +10,7 @@ from snipster.repositories.repository import SnippetRepository
 from snipster.repositories.sql_model_repository import SQLModelRepository
 
 
-class ReposistoryType(StrEnum):
+class RepositoryType(StrEnum):
     """Repository backends"""
 
     IN_MEMORY = "memory"
@@ -34,12 +34,12 @@ def create_repository(repo_type: str | None = None) -> SnippetRepository:
 
     repo_type = repo_type.lower()
 
-    if repo_type == ReposistoryType.IN_MEMORY.value:
+    if repo_type == RepositoryType.IN_MEMORY.value:
         return InMemorySnippetRepository()
-    if repo_type == ReposistoryType.SQL.value:
+    if repo_type == RepositoryType.SQL.value:
         db_url = config("DATABASE_URL", default="sqlite:///snippets.db")
         return SQLModelRepository(db_url=db_url)
-    if repo_type == ReposistoryType.JSON.value:
+    if repo_type == RepositoryType.JSON.value:
         data_dir = config("JSON_DATA_DIR", default="data")
         return JSONSnippetRepository(snippet_dir=data_dir)
 
