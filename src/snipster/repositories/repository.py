@@ -5,6 +5,8 @@ from typing import List
 
 from snipster import Snippet
 
+TAG_SEPARATOR = ", "
+
 
 class SnippetRepository(ABC):  # pragma: no cover
     @abstractmethod
@@ -28,7 +30,7 @@ class SnippetRepository(ABC):  # pragma: no cover
         pass
 
     @abstractmethod
-    def toggle_favourite(self, snippet_id: int) -> None:
+    def toggle_favourite(self, snippet_id: int) -> bool:
         pass
 
     @abstractmethod
@@ -44,7 +46,17 @@ class SnippetRepository(ABC):  # pragma: no cover
         remove: bool = False,
         sort: bool = True,
     ) -> str:
-        """Helper function to process new tags"""
+        """Process and merge tags for a snippet.
+
+        Args:
+            existing_tags: Current comma-separated tags string, or None if no tags exist.
+            new_tags: Tuple of tag strings to add or remove.
+            remove: If True, remove the specified tags. If False, add them.
+            sort: If True, sort the resulting tags alphabetically.
+
+        Returns:
+            Comma-separated string of processed tags.
+        """
         tags_list = existing_tags.split(", ") if existing_tags else []
         if not remove:
             for tag in new_tags:
@@ -58,4 +70,4 @@ class SnippetRepository(ABC):  # pragma: no cover
         if sort:
             tags_list.sort()
 
-        return ", ".join(tags_list)
+        return TAG_SEPARATOR.join(tags_list)

@@ -1,5 +1,6 @@
 """Database manager works with any SQLModel"""
 
+from datetime import datetime
 from typing import Any, Type
 
 from decouple import config
@@ -17,6 +18,8 @@ from sqlmodel import (
     create_engine,
     select,
 )
+
+from snipster.exceptions import RepositoryError, SnippetNotFoundError
 
 
 class DatabaseManager:
@@ -48,7 +51,7 @@ class DatabaseManager:
             The matching record if found, None otherwise
 
         Raises:
-            OperationalError: If the database operation fails.
+            RepositoryError: If the database operation fails.
         """
         with Session(self.engine) as session:
             try:
@@ -57,7 +60,9 @@ class DatabaseManager:
                 logger.error(
                     f"Select by id {pk} on model {model.__name__} failed: {err}"
                 )
-                raise
+                raise RepositoryError(
+                    f"Select by id {pk} on model {model.__name__} failed: {err}"
+                ) from err
 
     def select_all(
         self, model: Type[SQLModel], limit: int = None
@@ -73,7 +78,7 @@ class DatabaseManager:
             List of all matching records, or empty list if none found
 
         Raises:
-            OperationalError: If the database operation fails.
+            RepositoryError: If the database operation fails.
         """
         with Session(self.engine) as session:
             try:
@@ -84,7 +89,9 @@ class DatabaseManager:
                 logger.error(
                     f"Select all records on model {model.__name__} failed: {err}"
                 )
-                raise
+                raise RepositoryError(
+                    f"Select all records on model {model.__name__} failed: {err}"
+                ) from err
             except NoResultFound:  # pragma: no cover
                 logger.warning(f"No result found in model {model.__name__}")
 
@@ -103,7 +110,7 @@ class DatabaseManager:
             List of all matching records, or empty list if none found
 
         Raises:
-            OperationalError: If the database operation fails.
+            RepositoryError: If the database operation fails.
         """
         escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         with Session(self.engine) as session:
@@ -123,7 +130,9 @@ class DatabaseManager:
                 logger.error(
                     f"Select by filter on model {model.__name__} failed: {err}"
                 )
-                raise
+                raise RepositoryError(
+                    f"Select by filter on model {model.__name__} failed: {err}"
+                ) from err
 
     @staticmethod
     def _load_batches(session, records: list[SQLModel]):
@@ -230,7 +239,7 @@ class DatabaseManager:
             None
 
         Raises:
-            OperationalError: If the database operation fails.
+            RepositoryError: If the database operation fails.
         """
         with Session(self.engine) as session:
             logger.debug("Deleting single model instance")
@@ -241,13 +250,13 @@ class DatabaseManager:
                 logger.debug(f"Record to delete {to_delete}")
                 session.delete(to_delete)
                 session.commit()
-            except NoResultFound:
+            except NoResultFound as err:
                 logger.error(
                     f"Record with id {pk} does not exist in model {model.__name__}"
                 )
-                raise KeyError(
+                raise SnippetNotFoundError(
                     f"Record with id {pk} does not exist in model {model.__name__}"
-                )
+                ) from err
             except MultipleResultsFound as err:
                 session.rollback()
                 logger.error(
@@ -259,7 +268,9 @@ class DatabaseManager:
                 logger.error(
                     f"Delete statement failed for id {pk} in model {model.__name__}: {err}"
                 )
-                raise
+                raise RepositoryError(
+                    f"Delete statement failed for id {pk} in model {model.__name__}: {err}"
+                ) from err
 
         logger.info(f"Successfully deleted record id {pk} from model {model.__name__}")
 
@@ -277,25 +288,39 @@ class DatabaseManager:
             None
 
         Raises:
-            OperationalError: If the database operation fails.
+            RepositoryError: If the database operation fails.
         """
         with Session(self.engine) as session:
-            logger.debug("Updating single model instance id {pk}")
+            logger.debug(f"Updating single model instance id {pk}")
             try:
+                if not hasattr(model, col):
+                    raise ValueError(
+                        f"Column '{col}' does not exist in model {model.__name__}"
+                    )
                 statement = select(model).where(model.id == pk)
                 record = session.exec(statement)
                 model_obj = record.one()
 
                 setattr(model_obj, col, value)
+                setattr(model_obj, "updated_at", datetime.now())
                 session.add(model_obj)
                 session.commit()
                 session.refresh(model_obj)
+            except NoResultFound as err:
+                logger.error(
+                    f"Record with id {pk} does not exist in model {model.__name__}"
+                )
+                raise SnippetNotFoundError(
+                    f"Record with id {pk} does not exist in model {model.__name__}"
+                ) from err
             except OperationalError as err:
                 logger.error(
                     f"Update statement failed for id {pk} in model {model.__name__}: {err}"
                 )
                 session.rollback()
-                raise
+                raise RepositoryError(
+                    f"Update failed for {model.__name__} id {pk}: {err}"
+                ) from err
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -1,6 +1,7 @@
 import pytest
 
 from snipster import Language, Snippet
+from snipster.exceptions import SnippetNotFoundError
 from snipster.repositories.sql_model_repository import SQLModelRepository
 
 
@@ -97,10 +98,10 @@ def test_delete_existing_snippet(repo, snippet_factory):
 
 
 def test_delete_non_existent_snippet_does_not_fail(repo, snippet_factory):
-    """Test that deleting non-existent snippet raise KeyError"""
+    """Test that deleting non-existent snippet raise SnippetNotFoundError"""
     snippet_factory()
 
-    with pytest.raises(KeyError):
+    with pytest.raises(SnippetNotFoundError):
         repo.delete(999)
 
 
@@ -246,15 +247,13 @@ def test_toggle_favourite(repo, snippet_factory):
     snippet = repo.get(1)
     assert snippet.favorite is False
 
-    repo.toggle_favourite(1)
-    snippet = repo.get(1)
-    assert snippet.favorite is True
+    favourite = repo.toggle_favourite(1)
+    assert favourite is True
 
-    repo.toggle_favourite(1)
-    snippet = repo.get(1)
-    assert snippet.favorite is False
+    favourite = repo.toggle_favourite(1)
+    assert favourite is False
 
-    with pytest.raises(KeyError):
+    with pytest.raises(SnippetNotFoundError):
         repo.toggle_favourite(999)
 
 
@@ -303,7 +302,7 @@ def test_snippet_unsort_tags_then_sort_tags(repo, snippet_factory):
     assert len(all_tags) == 4
     assert all_tags == ["tag1", "tag2", "tag3", "tag4"]
 
-    with pytest.raises(KeyError):
+    with pytest.raises(SnippetNotFoundError):
         repo.tags(999, "tag1")
 
 
