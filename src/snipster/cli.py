@@ -4,10 +4,9 @@ import typer
 from loguru import logger
 from rich.console import Console
 from rich.table import Table
-from sqlalchemy.exc import NoResultFound, OperationalError
 
 from snipster import Language, Snippet
-from snipster.exceptions import SnippetNotFoundError
+from snipster.exceptions import RepositoryError, SnippetNotFoundError
 from snipster.repositories.backend import create_repository
 
 app = typer.Typer()
@@ -68,14 +67,13 @@ def add(
             favorite=favorite,
         )
     )
-    # typer.secho(f" Added snippet: {title}")
     console.print(
         f":white_check_mark: [bold green]Snippet '{title}' added[/bold green]"
     )
 
 
 @app.command()
-def list(ctx: typer.Context = None):
+def list_snippet(ctx: typer.Context = None):
     """List snippets"""
     repo = ctx.obj
     all_snippets = repo.list()
@@ -120,8 +118,7 @@ def get(snippet_id: int = typer.Option(..., prompt=True), ctx: typer.Context = N
         )
         console.print(table)
     else:
-        console.print()
-        console.print(f"[yellow]No snippet found for id {snippet_id}[/yellow]")
+        console.print(f"\n[yellow]No snippet found for id {snippet_id}[/yellow]")
         raise typer.Exit(code=1)
 
 
@@ -135,12 +132,12 @@ def delete(snippet_id: int = typer.Option(..., prompt=True), ctx: typer.Context 
         console.print(
             f":white_check_mark: [bold green]Snippet '{snippet_id}' deleted[/bold green]"
         )
-    except NoResultFound:
+    except SnippetNotFoundError:
         console.print(
             f":cross_mark: [bold red]Snippet '{snippet_id}' not found[/bold red]"
         )
         raise typer.Exit(code=1)
-    except OperationalError as err:
+    except RepositoryError as err:
         console.print(f"[bold red] Operational Error: {err}[/bold red]")
         raise typer.Exit(code=1)
 
@@ -172,7 +169,7 @@ def search(
     except ValueError:
         console.print(f"[yellow]No matches found for {term}[/yellow]")
         raise typer.Exit(code=1)
-    except OperationalError as err:
+    except RepositoryError as err:
         console.print(f"[bold red] Operational Error: {err}[/bold red]")
         raise typer.Exit(code=1)
 
@@ -185,9 +182,10 @@ def toggle_favourite(
     repo = ctx.obj
 
     try:
-        repo.toggle_favourite(snippet_id)
+        favourited = repo.toggle_favourite(snippet_id)
+        action = "favourited" if favourited else "unfavourited"
         console.print(
-            f":white_check_mark: [bold green]Snippet '{snippet_id}' favourited[/bold green]"
+            f":white_check_mark: [bold green]Snippet '{snippet_id}' {action}[/bold green]"
         )
     except SnippetNotFoundError:
         console.print(
@@ -199,19 +197,19 @@ def toggle_favourite(
 @app.command()
 def tags(
     snippet_id: int = typer.Option(..., prompt=True),
-    tags: str = typer.Option(..., prompt=True, help="Add comma separated tags"),
+    tags_input: str = typer.Option(..., prompt=True, help="Add comma separated tags"),
     remove: bool = typer.Option(
         False, prompt=True, help="True to remove tags. Default is False"
     ),
     sort: bool = typer.Option(True, help="True if tags are sorted. Default is True"),
     ctx: typer.Context = None,
 ):
-    """Add comma separted tags to snippet"""
+    """Add comma separated tags to snippet"""
     repo = ctx.obj
 
     try:
-        tags = tags.strip().split(",")
-        repo.tags(snippet_id, *tags, remove=remove, sort=sort)
+        tags_list = [t.strip() for t in tags_input.strip().split(",")]
+        repo.tags(snippet_id, *tags_list, remove=remove, sort=sort)
         console.print(
             f":white_check_mark: [bold green]Tags added for Snippet '{snippet_id}'[/bold green]"
         )
