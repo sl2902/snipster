@@ -5,6 +5,7 @@ from typer.testing import CliRunner
 
 from snipster import Language, Snippet
 from snipster.cli import app
+from snipster.exceptions import RepositoryError, SnippetNotFoundError
 
 runner = CliRunner()
 
@@ -32,29 +33,56 @@ def test_add_snippet(mock_repo):
     mock_repo.add.assert_called_once()
 
 
+def test_add_with_all_options(mock_repo):
+    """Test adding a snippet with all options"""
+    result = runner.invoke(
+        app,
+        [
+            "add",
+            "--title",
+            "Test",
+            "--code",
+            "print('hello')",
+            "--description",
+            "A test snippet",
+            "--language",
+            "Python",
+            "--tags",
+            "test,example",
+            "--favorite",
+        ],
+    )
+
+    assert result.exit_code == 0
+    mock_repo.add.assert_called_once()
+    call_args = mock_repo.add.call_args[0][0]
+    assert call_args.favorite is True
+    assert call_args.tags == "test,example"
+
+
 def test_list_snippet(mock_repo):
     """Test listing snippets"""
     snippet = Snippet(id=1, title="Test", code="code", language=Language.PYTHON)
     mock_repo.list.return_value = [snippet]
 
-    result = runner.invoke(app, ["list"])
+    result = runner.invoke(app, ["list-snippet"])
 
     assert result.exit_code == 0
-    assert "Test" in result.stdout
+    assert "Test" in strip_ansi(result.stdout)
 
 
 def test_list_empty_snippet(mock_repo):
     """Test listing when no snippets exist"""
     mock_repo.list.return_value = []
 
-    result = runner.invoke(app, ["list"])
+    result = runner.invoke(app, ["list-snippet"])
     assert result.exit_code == 0
-    assert "No snippets found" in result.stdout
+    assert "No snippets found" in strip_ansi(result.stdout)
 
 
 def test_get_snippet_found(mock_repo):
     """Test getting a snippet by ID"""
-    snippet = snippet = Snippet(
+    snippet = Snippet(
         id=1, title="Test", code="print('hello')", language=Language.PYTHON
     )
 
@@ -63,7 +91,7 @@ def test_get_snippet_found(mock_repo):
     result = runner.invoke(app, ["get", "--snippet-id", 1])
 
     assert result.exit_code == 0
-    assert "Details of Snippet" in result.stdout
+    assert "Details of Snippet" in strip_ansi(result.stdout)
 
 
 def test_get_snippet_not_found(mock_repo):
@@ -72,12 +100,12 @@ def test_get_snippet_not_found(mock_repo):
     result = runner.invoke(app, ["get", "--snippet-id", 1])
 
     assert result.exit_code == 1
-    assert "No snippet found" in result.stdout
+    assert "No snippet found" in strip_ansi(result.stdout)
 
 
 def test_delete_snippet(mock_repo):
     """Test deleting snippet"""
-    snippet = snippet = Snippet(
+    snippet = Snippet(
         id=1, title="Test", code="print('hello')", language=Language.PYTHON
     )
 
@@ -90,20 +118,16 @@ def test_delete_snippet(mock_repo):
 
 def test_delete_snippet_not_found(mock_repo):
     """Test deleting non-existent snippet"""
-    from sqlalchemy.exc import NoResultFound
-
-    mock_repo.delete.side_effect = NoResultFound()
+    mock_repo.delete.side_effect = SnippetNotFoundError()
 
     result = runner.invoke(app, ["delete", "--snippet-id", 1])
     assert result.exit_code == 1
-    assert "not found" in result.stdout
+    assert "not found" in strip_ansi(result.stdout)
 
 
 def test_delete_snippet_operational_error(mock_repo):
     """Test deleting Operational error"""
-    from sqlalchemy.exc import OperationalError
-
-    mock_repo.delete.side_effect = OperationalError("Mock DB Error", None, None)
+    mock_repo.delete.side_effect = RepositoryError("Mock DB Error", None, None)
 
     result = runner.invoke(app, ["delete", "--snippet-id", 1])
     assert result.exit_code == 1
@@ -124,6 +148,17 @@ def test_search_snippets(mock_repo):
     mock_repo.search.assert_called_once_with("python", language=None)
 
 
+def test_search_with_language_filter(mock_repo):
+    """Test searching with language filter"""
+    snippet = Snippet(id=1, title="Test", code="code", language=Language.PYTHON)
+    mock_repo.search.return_value = [snippet]
+
+    result = runner.invoke(app, ["search", "--term", "test", "--language", "python"])
+
+    assert result.exit_code == 0
+    mock_repo.search.assert_called_once_with("test", language="python")
+
+
 def test_search_snippets_no_match(mock_repo):
     """Test searching for non-existent terms in snippet"""
     mock_repo.search.side_effect = ValueError("No matches found")
@@ -136,9 +171,7 @@ def test_search_snippets_no_match(mock_repo):
 
 def test_search_snippets_operational_error(mock_repo):
     """Test searching with Operational error"""
-    from sqlalchemy.exc import OperationalError
-
-    mock_repo.search.side_effect = OperationalError("Mock DB Error", None, None)
+    mock_repo.search.side_effect = RepositoryError("Mock DB Error", None, None)
 
     result = runner.invoke(app, ["search", "--term", "python"])
 
@@ -159,8 +192,6 @@ def test_toggle_favourite_snippet(mock_repo):
 
 def test_toggle_favourite_snippet_not_found(mock_repo):
     """Test toggle favourite SnippetNotFound error"""
-    from snipster.exceptions import SnippetNotFoundError
-
     mock_repo.toggle_favourite.side_effect = SnippetNotFoundError("Not found")
     result = runner.invoke(app, ["toggle-favourite", "--snippet-id", 999])
 
@@ -172,18 +203,26 @@ def test_add_with_tags(mock_repo):
     """Test adding snippet with multiple tags"""
     result = runner.invoke(
         app,
-        ["tags", "--snippet-id", 1, "--tags", "test1,test2", "--no-remove", "--sort"],
+        [
+            "tags",
+            "--snippet-id",
+            1,
+            "--tags-input",
+            "test1,test2",
+            "--no-remove",
+            "--sort",
+        ],
     )
 
     assert result.exit_code == 0
     mock_repo.tags.assert_called_once_with(1, "test1", "test2", remove=False, sort=True)
-    assert "Tags added" in result.stdout
+    assert "Tags added" in strip_ansi(result.stdout)
 
 
 def test_remove_tags(mock_repo):
     """Test removing tags from snippet"""
     result = runner.invoke(
-        app, ["tags", "--snippet-id", 1, "--tags", "test1", "--remove"]
+        app, ["tags", "--snippet-id", 1, "--tags-input", "test1", "--remove"]
     )
     assert result.exit_code == 0
     mock_repo.tags.assert_called_once_with(1, "test1", remove=True, sort=True)
@@ -191,12 +230,11 @@ def test_remove_tags(mock_repo):
 
 def test_tags_not_found(mock_repo):
     """Test tagging non-existent snippet"""
-    from snipster.exceptions import SnippetNotFoundError
-
     mock_repo.tags.side_effect = SnippetNotFoundError("Not found")
 
     result = runner.invoke(
-        app, ["tags", "--snippet-id", 999, "--tags", "test", "--no-remove", "--sort"]
+        app,
+        ["tags", "--snippet-id", 999, "--tags-input", "test", "--no-remove", "--sort"],
     )
 
     assert result.exit_code == 1
