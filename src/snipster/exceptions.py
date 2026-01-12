@@ -1,4 +1,10 @@
-"""Custom exceptions"""
+"""Custom exceptions for Snipster application"""
+
+
+class SnipsterError(Exception):
+    """Base exception for all Snipster errors."""
+
+    pass
 
 
 class SnippetNotFoundError(Exception):
@@ -9,5 +15,13 @@ class SnippetNotFoundError(Exception):
 
 class RepositoryError(Exception):
     """Base exception for repository operations"""
+
+    pass
+
+
+class DuplicateSnippetError(SnipsterError):
+    """
+    Raised when attempting to add a snippet that already exists.
+    """
 
     pass
