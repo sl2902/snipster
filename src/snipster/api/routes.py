@@ -1,6 +1,6 @@
 """Define snipster routes"""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from loguru import logger
 
 from snipster import Snippet
@@ -61,7 +61,6 @@ def delete_snippet(*, repo: SnippetRepository = Depends(get_repo), snippet_id: i
     try:
         repo.delete(snippet_id)
         logger.debug(f"Snippet '{snippet_id}' is available for deletion")
-        return {"message": "Snippet deleted successfully"}
     except SnippetNotFoundError:
         raise HTTPException(status_code=404, detail=f"Snippet '{snippet_id}' not found")
     except MultipleSnippetsFoundError:
@@ -70,6 +69,7 @@ def delete_snippet(*, repo: SnippetRepository = Depends(get_repo), snippet_id: i
         )
     except RepositoryError:
         raise HTTPException(status_code=500, detail="Database error")
+    return {"message": "Snippet deleted successfully"}
 
 
 @router.get("/snippets/v1/search/", response_model=list[SnippetResponse])
@@ -88,3 +88,39 @@ def search_snippets(
         raise HTTPException(status_code=404, detail="Search yielded no snippets")
     except RepositoryError:
         raise HTTPException(status_code=500, detail="Database error")
+
+
+@router.post("/snippets/v1/{snippet_id}/favourite")
+def toggle_favourite(*, repo: SnippetRepository = Depends(get_repo), snippet_id: int):
+    try:
+        favourited = repo.toggle_favourite(snippet_id)
+        action = "Favourited" if favourited else "Unfavourited"
+        logger.debug(f"Snippet '{snippet_id}' {action}")
+    except SnippetNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Snippet '{snippet_id}' not found")
+    except RepositoryError:
+        raise HTTPException(status_code=500, detail="Database error")
+    return {"message": f"Snippet '{snippet_id}' is {action}"}
+
+
+@router.post("/snippets/v1/{snippet_id}/tags")
+def tag_snippet(
+    *,
+    repo: SnippetRepository = Depends(get_repo),
+    snippet_id: int,
+    tags: list[str] = Query(...),
+    remove: bool = False,
+    sort: bool = True,
+):
+    try:
+        repo.tags(snippet_id, *tags, remove=remove, sort=sort)
+        logger.debug(f"Tag snippets for snippet '{snippet_id}")
+    except SnippetNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Snippet '{snippet_id}' not found")
+    except RepositoryError:
+        raise HTTPException(status_code=500, detail="Database error")
+    if remove:
+        return {
+            "message": f"Successfully removed the following tags '{", ".join(tags)}' for snippet '{snippet_id}'"
+        }
+    return {"message": f"Successfully tagged snippet {snippet_id}"}
