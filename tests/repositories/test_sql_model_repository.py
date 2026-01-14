@@ -335,10 +335,6 @@ def test_duplicate_tags(repo, snippet_factory):
     "error_scenarios",
     [
         "add",
-        "list",
-        "get",
-        "list",
-        "search",
     ],
 )
 def test_sql_repo_operational_errors_logged(repo, mocker, error_scenarios):
@@ -353,5 +349,3 @@ def test_sql_repo_operational_errors_logged(repo, mocker, error_scenarios):
         )
         with pytest.raises(RepositoryError):
             repo.add(snippet1)
-    else:
-        pass
