@@ -6,7 +6,11 @@ from loguru import logger
 
 from snipster import Language, Snippet
 from snipster.database_manager import DatabaseManager
-from snipster.exceptions import SnippetNotFoundError
+from snipster.exceptions import (
+    DuplicateSnippetError,
+    RepositoryError,
+    SnippetNotFoundError,
+)
 from snipster.repositories.repository import SnippetRepository
 
 
@@ -18,11 +22,15 @@ class SQLModelRepository(SnippetRepository):
         self.db_manager = DatabaseManager(self.db_url, echo)
 
     def add(self, snippet: Snippet) -> None:
-        is_inserted = self.db_manager.insert_record(Snippet, snippet)
-        if is_inserted:
-            logger.info("Added a single record successfully")
-        else:
+        try:
+            self.db_manager.insert_record(Snippet, snippet)
+        except DuplicateSnippetError:
             logger.warning(f"Duplicate record found: {snippet}")
+            raise
+        except RepositoryError:
+            logger.warning(f"Failed to add snippet: {snippet}")
+            raise
+        logger.info("Added a single record successfully")
 
     def list(self) -> List[Snippet]:
         return list(self.db_manager.select_all(Snippet))
