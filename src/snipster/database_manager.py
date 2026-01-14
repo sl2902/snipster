@@ -19,7 +19,11 @@ from sqlmodel import (
     select,
 )
 
-from snipster.exceptions import RepositoryError, SnippetNotFoundError
+from snipster.exceptions import (
+    DuplicateSnippetError,
+    RepositoryError,
+    SnippetNotFoundError,
+)
 
 
 class DatabaseManager:
@@ -155,22 +159,30 @@ class DatabaseManager:
             record: Single model instance to insert
 
         Returns:
-            bool
+            None
+
+        Raises:
+            DuplicateSnippetError: If a duplicate snippet was inserted.
+            RepositoryError: If the database operation fails.
         """
         with Session(self.engine) as session:
             logger.debug("Inserting single model instance")
             try:
                 self._load_batches(session, [record])
-            except IntegrityError:
-                logger.warning("Duplicate record found in table.")
+            except IntegrityError as err:
+                logger.warning(f"Duplicate record found in model {model.__name__}.")
                 session.rollback()
-                return False
+                raise DuplicateSnippetError(
+                    f"Duplicate record found in model {model.__name__}."
+                ) from err
             except OperationalError as err:
                 logger.error(
                     f"Insert statement failed for model {model.__name__}: {err}"
                 )
                 session.rollback()
-                return False
+                raise RepositoryError(
+                    f"Insert statement failed for model {model.__name__}: {err}"
+                ) from err
 
         logger.info(f"Successfully inserted record into model {model.__name__}")
         return True
