@@ -40,7 +40,7 @@ class SQLModelRepository(SnippetRepository):
 
     def delete(self, snippet_id: int) -> None:
         self.db_manager.delete_record(Snippet, snippet_id)
-        logger.info(f"Record id {id} deleted successfully")
+        logger.info(f"Record id {snippet_id} deleted successfully")
 
     def search(self, term: str, *, language: str | None = None) -> List[Snippet]:
         cols_to_search = ["title", "code", "description"]
@@ -51,8 +51,10 @@ class SQLModelRepository(SnippetRepository):
                 if snippet.id not in all_snippets:
                     all_snippets[snippet.id] = snippet
         if not all_snippets:
-            logger.error(f"No matches found for term {term} in the Snippets model")
-            raise ValueError(f"No matches found for term {term} in the Snippets model")
+            logger.error(f"No matches found for term '{term}' in the Snippets model")
+            raise ValueError(
+                f"No matches found for term '{term}' in the Snippets model"
+            )
         if language:
             lang_filtered_snippets = []
             for snippet in all_snippets.values():
