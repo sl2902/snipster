@@ -1,7 +1,14 @@
 import pytest
+from sqlalchemy.exc import (
+    OperationalError,
+)
 
 from snipster import Language, Snippet
-from snipster.exceptions import SnippetNotFoundError
+from snipster.exceptions import (
+    DuplicateSnippetError,
+    RepositoryError,
+    SnippetNotFoundError,
+)
 from snipster.repositories.sql_model_repository import SQLModelRepository
 
 
@@ -50,11 +57,12 @@ def test_add_multiple_snippets(repo):
     assert repo.get(snippet2.id) is not None
 
 
-def test_add_duplicate_snippet(repo, snippet_factory):
-    """Test that duplicate snippets (same title+language) are rejected"""
-    for _ in range(2):
-        snippet_factory()
+def test_add_duplicate_snippet_error(repo, snippet_factory):
+    """Test that duplicate snippets (same title+language) are rejected and an error is thrown"""
 
+    with pytest.raises(DuplicateSnippetError):
+        for _ in range(2):
+            snippet_factory()
     all_snippets = repo.list()
     assert len(all_snippets) == 1
     assert all_snippets[0].title == "test code"
@@ -321,3 +329,29 @@ def test_duplicate_tags(repo, snippet_factory):
 
     assert len(snippet.tags.split(", ")) == 2
     assert snippet.tags == "tag1, tag2"
+
+
+@pytest.mark.parametrize(
+    "error_scenarios",
+    [
+        "add",
+        "list",
+        "get",
+        "list",
+        "search",
+    ],
+)
+def test_sql_repo_operational_errors_logged(repo, mocker, error_scenarios):
+    """Test that all sql repo db operations log OperationalError properly"""
+    mock_session = mocker.patch("snipster.database_manager.Session")
+
+    snippet1 = Snippet(title="first", code="code1")
+
+    if error_scenarios == "add":
+        mock_session.return_value.__enter__.return_value.commit.side_effect = (
+            OperationalError("Mock DB error", None, None)
+        )
+        with pytest.raises(RepositoryError):
+            repo.add(snippet1)
+    else:
+        pass
