@@ -22,7 +22,25 @@ class Language(str, Enum):
     TYPESCRIPT = "TypeScript"
 
 
-class Snippet(SQLModel, table=True):
+class SnippetBase(SQLModel):
+    """Shared fields for all snippet schemas"""
+
+    title: str = Field(..., description="Title of the snippet")
+    code: str = Field(..., description="Code snippet")
+    description: str | None = Field(
+        default=None, description="Description of the code snippet"
+    )
+    language: Language = Field(
+        default=Language.PYTHON,
+        description="Enum describing the programming language",
+    )
+    tags: str | None = Field(
+        default=None, description="Labels to identify the code snippet"
+    )
+    favorite: bool = Field(default=False)
+
+
+class Snippet(SnippetBase, table=True):
     """A code snippet with metadata for organization and retrieval.
 
     Snippets are uniquely identified by their title + language combination,
@@ -41,25 +59,12 @@ class Snippet(SQLModel, table=True):
     """
 
     id: int | None = Field(default=None, primary_key=True)
-    title: str = Field(..., description="Title of the snippet")
-    code: str = Field(..., description="Code snippet")
-    description: str | None = Field(
-        default=None, description="Description of the code snippet"
-    )
-    language: Language = Field(
-        default=Language.PYTHON,
-        description="Enum describing the programming language",
-    )
-    tags: str | None = Field(
-        default=None, description="Labels to identify the code snippet"
-    )
     created_at: datetime = Field(
         default_factory=datetime.now, description="Creation date of snippet"
     )
     updated_at: datetime = Field(
         default_factory=datetime.now, description="Snippet last updated"
     )
-    favorite: bool = Field(default=False, description="Is favourite?")
 
     # https://github.com/fastapi/sqlmodel/issues/52#issuecomment-2495817760
     model_config = ConfigDict(validate_assignment=True, from_attributes=True)
