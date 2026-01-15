@@ -69,7 +69,7 @@ def delete_snippet(*, repo: SnippetRepository = Depends(get_repo), snippet_id: i
         )
     except RepositoryError:
         raise HTTPException(status_code=500, detail="Database error")
-    return {"message": "Snippet deleted successfully"}
+    return {"message": f"Snippet '{snippet_id}' deleted successfully"}
 
 
 @router.get("/snippets/v1/search/", response_model=list[SnippetResponse])
