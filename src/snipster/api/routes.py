@@ -123,4 +123,4 @@ def tag_snippet(
         return {
             "message": f"Successfully removed the following tags '{", ".join(tags)}' for snippet '{snippet_id}'"
         }
-    return {"message": f"Successfully tagged snippet {snippet_id}"}
+    return {"message": f"Successfully tagged snippet '{snippet_id}'"}
