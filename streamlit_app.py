@@ -1,3 +1,5 @@
+import time
+
 import httpx
 import streamlit as st
 from decouple import config
@@ -130,6 +132,8 @@ if "current_view" not in st.session_state:
     st.session_state.current_view = "list"
 if "redirect_to_list" not in st.session_state:
     st.session_state.redirect_to_list = False
+if "menu_key" not in st.session_state:
+    st.session_state.menu_key = 0
 
 view_to_index = {
     "list": 0,
@@ -144,8 +148,7 @@ view_to_index = {
 if st.session_state.redirect_to_list:
     st.session_state.current_view = "list"
     st.session_state.redirect_to_list = False
-    if "menu" in st.session_state:
-        del st.session_state.menu
+    st.session_state.menu_key += 1
 
 with st.sidebar:
     st.title("Snipster")
@@ -160,7 +163,7 @@ with st.sidebar:
             "Toggle Favourite",
             "Tag Snippets",
         ],
-        key="menu",
+        key=f"menu_{st.session_state.menu_key}",
         index=view_to_index.get(st.session_state.current_view, "list"),
     )
 
@@ -334,8 +337,6 @@ elif st.session_state.current_view == "delete":
                 st.success(
                     f"✅ Succesfully deleted snippet '{snippet.get("snippet_id")}'"
                 )
-
-                import time
 
                 time.sleep(1)
                 on_delete_success()
