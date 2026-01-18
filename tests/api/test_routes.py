@@ -44,6 +44,25 @@ def client(sql_repo):
     app.dependency_overrides.clear()
 
 
+def test_model_validation_error(client):
+    """Test Model validation error"""
+
+    response = client.post(
+        "/snippets/v1/",
+        json={
+            "title": "fi",
+            "code": "code1",
+            "description": "description",
+            "tags": "tag1,tag2",
+        },
+    )
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    data = response.json()["detail"]
+    for field, error in data.items():
+        assert "value error" in error.lower()
+
+
 def test_create_snippet(client, sql_repo):
     """Create Snippet endpoint"""
 
