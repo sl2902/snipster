@@ -1,7 +1,8 @@
 """Define snipster routes"""
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from loguru import logger
+from pydantic_core import ValidationError as PydanticValidationError
 
 from snipster import Snippet
 from snipster.api.dependencies import get_repo
@@ -22,14 +23,24 @@ def create_snippet(
     *, repo: SnippetRepository = Depends(get_repo), snippet: SnippetCreate
 ):
     snippet_data = snippet.model_dump()
-    db_snippet = Snippet(**snippet_data)
+    try:
+        db_snippet = Snippet(**snippet_data)
+    except PydanticValidationError as e:
+        errors = {err["loc"][0]: err["msg"] for err in e.errors()}
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=errors
+        )
     try:
         repo.add(db_snippet)
         logger.debug(f"Snippet with title '{db_snippet.title}' created")
     except DuplicateSnippetError:
-        raise HTTPException(status_code=409, detail="Snippet already exists")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Snippet already exists"
+        )
     except RepositoryError:
-        raise HTTPException(status_code=500, detail="Database error")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database error"
+        )
     return {"message": f"Successfully created Snippet with title '{db_snippet.title}'"}
 
 
@@ -40,9 +51,13 @@ def list_snippets(*, repo: SnippetRepository = Depends(get_repo)):
         if snippets:
             logger.debug(f"{len(snippets)} found in repository")
             return snippets
-        raise HTTPException(status_code=404, detail="No snippets in repository")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="No snippets in repository"
+        )
     except RepositoryError:
-        raise HTTPException(status_code=500, detail="Database error")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database error"
+        )
 
 
 @router.get("/snippets/v1/{snippet_id}", response_model=SnippetResponse)
@@ -51,9 +66,14 @@ def get_snippet(*, repo: SnippetRepository = Depends(get_repo), snippet_id: int)
         snippet = repo.get(snippet_id)
         if snippet:
             return snippet
-        raise HTTPException(status_code=404, detail=f"Snippet '{snippet_id}' not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Snippet '{snippet_id}' not found",
+        )
     except RepositoryError:
-        raise HTTPException(status_code=500, detail="Database error")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database error"
+        )
 
 
 @router.delete("/snippets/v1/{snippet_id}")
@@ -62,13 +82,18 @@ def delete_snippet(*, repo: SnippetRepository = Depends(get_repo), snippet_id: i
         repo.delete(snippet_id)
         logger.debug(f"Snippet '{snippet_id}' is available for deletion")
     except SnippetNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Snippet '{snippet_id}' not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Snippet '{snippet_id}' not found",
+        )
     except MultipleSnippetsFoundError:
         raise HTTPException(
             status_code=409, detail=f"Multiple snippets found for snippet {snippet_id}"
         )
     except RepositoryError:
-        raise HTTPException(status_code=500, detail="Database error")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database error"
+        )
     return {"message": f"Snippet '{snippet_id}' deleted successfully"}
 
 
@@ -85,9 +110,13 @@ def search_snippets(
             logger.debug(f"Matches found for search term '{term}'")
             return snippets
     except ValueError:
-        raise HTTPException(status_code=404, detail="Search yielded no snippets")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Search yielded no snippets"
+        )
     except RepositoryError:
-        raise HTTPException(status_code=500, detail="Database error")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database error"
+        )
 
 
 @router.post("/snippets/v1/{snippet_id}/favourite")
@@ -97,9 +126,14 @@ def toggle_favourite(*, repo: SnippetRepository = Depends(get_repo), snippet_id:
         action = "Favourited" if favourited else "Unfavourited"
         logger.debug(f"Snippet '{snippet_id}' {action}")
     except SnippetNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Snippet '{snippet_id}' not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Snippet '{snippet_id}' not found",
+        )
     except RepositoryError:
-        raise HTTPException(status_code=500, detail="Database error")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database error"
+        )
     return {"message": f"Snippet '{snippet_id}' is {action}"}
 
 
@@ -116,9 +150,14 @@ def tag_snippet(
         repo.tags(snippet_id, *tags, remove=remove, sort=sort)
         logger.debug(f"Tag snippets for snippet '{snippet_id}")
     except SnippetNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Snippet '{snippet_id}' not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Snippet '{snippet_id}' not found",
+        )
     except RepositoryError:
-        raise HTTPException(status_code=500, detail="Database error")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database error"
+        )
     if remove:
         return {
             "message": f"Successfully removed the following tags '{", ".join(tags)}' for snippet '{snippet_id}'"
