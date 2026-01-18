@@ -7,7 +7,11 @@ from sqlalchemy.exc import (
 )
 
 from snipster import DatabaseManager, Language, Snippet
-from snipster.exceptions import RepositoryError, SnippetNotFoundError
+from snipster.exceptions import (
+    DuplicateSnippetError,
+    RepositoryError,
+    SnippetNotFoundError,
+)
 
 
 @pytest.fixture(scope="function")
@@ -146,25 +150,22 @@ class TestInsertSingleRecord:
         is_inserted = db_manager.insert_record(Snippet, sample_snippet)
         actual = db_manager.select_by_id(Snippet, 1)
 
-        print(f"DB Manager ID: {id(db_manager)}")
         assert is_inserted is True
         assert actual.title == "Hello World"
         assert actual.language == "Python"
 
     def test_insert_duplicate_record(self, db_manager):
-        print(f"DB Manager ID: {id(db_manager)}")
-        for _ in range(2):
-            snippet = Snippet(
-                title="Function Definition",
-                code="def greet(name):\n    return f'Hello, {name}!'",
-                language=Language.PYTHON,
-                tags="function, basics",
-            )
-            is_inserted = db_manager.insert_record(Snippet, snippet)
+        with pytest.raises(DuplicateSnippetError):
+            for _ in range(2):
+                snippet = Snippet(
+                    title="Function Definition",
+                    code="def greet(name):\n    return f'Hello, {name}!'",
+                    language=Language.PYTHON,
+                    tags="function, basics",
+                )
+                db_manager.insert_record(Snippet, snippet)
 
         actual = db_manager.select_all(Snippet)
-
-        assert is_inserted is False
         assert len(actual) == 1
 
 
@@ -406,13 +407,15 @@ def test_operational_errors_are_logged(
         mock_session.return_value.__enter__.return_value.commit.side_effect = (
             IntegrityError("Mock DB error", None, None)
         )
-        db_manager.insert_record(Snippet, sample_snippet)
+        with pytest.raises(DuplicateSnippetError):
+            db_manager.insert_record(Snippet, sample_snippet)
         mock_logger.warning.assert_called_once()
 
         mock_session.return_value.__enter__.return_value.commit.side_effect = (
             OperationalError("Mock DB error", None, None)
         )
-        db_manager.insert_record(Snippet, sample_snippet)
+        with pytest.raises(RepositoryError):
+            db_manager.insert_record(Snippet, sample_snippet)
     elif error_scenarios == "select_by_id":
         mock_session.return_value.__enter__.return_value.get.side_effect = (
             OperationalError("Mock DB error", None, None)
