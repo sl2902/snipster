@@ -1,6 +1,6 @@
 """Define models class"""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 
 from loguru import logger
@@ -37,7 +37,9 @@ class SnippetBase(SQLModel):
     tags: str | None = Field(
         default=None, description="Labels to identify the code snippet"
     )
-    favorite: bool = Field(default=False)
+    favorite: bool = Field(
+        default=False, description="Flag to mark snippet as favorite"
+    )
 
 
 class Snippet(SnippetBase, table=True):
@@ -60,10 +62,12 @@ class Snippet(SnippetBase, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     created_at: datetime = Field(
-        default_factory=datetime.now, description="Creation date of snippet"
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Creation date of snippet",
     )
     updated_at: datetime = Field(
-        default_factory=datetime.now, description="Snippet last updated"
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Snippet last updated",
     )
 
     # https://github.com/fastapi/sqlmodel/issues/52#issuecomment-2495817760
