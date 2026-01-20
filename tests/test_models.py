@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pytest
 from pydantic_core import ValidationError
@@ -46,17 +46,17 @@ class TestTimestampDefaults:
     """Group all default timestamp fields tests"""
 
     def test_model_snippet_timestamp_default(self):
-        before = datetime.now()
+        before = datetime.now(timezone.utc)
         snippet = Snippet(title="Hello World", code="print('Hello World')")
-        after = datetime.now()
+        after = datetime.now(timezone.utc)
 
         assert snippet.created_at is not None
         assert before <= snippet.created_at <= after
 
     def test_model_snippet_updated_at_default(self):
-        before = datetime.now()
+        before = datetime.now(timezone.utc)
         snippet = Snippet(title="Hello World", code="print('Hello World')")
-        after = datetime.now()
+        after = datetime.now(timezone.utc)
 
         assert snippet.updated_at is not None
         assert before <= snippet.updated_at <= after
