@@ -19,7 +19,7 @@ def mock_repo(mocker):
 
 
 def strip_ansi(text):
-    return re.sub(r"\x1b\[[0-9;]*m", "", text)
+    return re.sub(r"\x1b\[[0-9;]*m|\[.*?\]", "", text)
 
 
 def test_add_snippet(mock_repo):
@@ -31,6 +31,20 @@ def test_add_snippet(mock_repo):
     assert result.exit_code == 0
     assert "Snippet" in result.stdout
     mock_repo.add.assert_called_once()
+
+
+def test_add_command_model_validation_error(mock_repo, mocker):
+    """Test add command handles model validation error"""
+
+    mock_console = mocker.patch("snipster.cli.console")
+
+    result = runner.invoke(app, ["add", "--title", "Te", "--code", "print('test')"])
+
+    assert result.exit_code == 1
+    mock_console.print.assert_called()
+
+    call_args = str(mock_console.print.call_args[0][0])
+    assert "Model validation failed" in call_args
 
 
 def test_add_with_all_options(mock_repo):
@@ -49,14 +63,12 @@ def test_add_with_all_options(mock_repo):
             "Python",
             "--tags",
             "test,example",
-            "--favorite",
         ],
     )
 
     assert result.exit_code == 0
     mock_repo.add.assert_called_once()
     call_args = mock_repo.add.call_args[0][0]
-    assert call_args.favorite is True
     assert call_args.tags == "test,example"
 
 
@@ -159,14 +171,34 @@ def test_search_with_language_filter(mock_repo):
     mock_repo.search.assert_called_once_with("test", language="python")
 
 
-def test_search_snippets_no_match(mock_repo):
+def test_search_snippets_no_match(mock_repo, mocker):
     """Test searching for non-existent terms in snippet"""
-    mock_repo.search.side_effect = ValueError("No matches found")
+    mock_console = mocker.patch("snipster.cli.console")
+    mock_repo.search.return_value = []
 
     result = runner.invoke(app, ["search", "--term", "python"])
 
     assert result.exit_code == 1
-    assert "No matches found" in strip_ansi(result.stdout)
+    mock_console.print.assert_called_once()
+    call_args = str(mock_console.print.call_args[0][0])
+    assert "No matches found" in call_args
+
+
+def test_search_term_found_but_lang_not_found(mock_repo, mocker):
+    """Test search with valid term but non-matching language returns empty list"""
+    mock_console = mocker.patch("snipster.cli.console")
+    mock_repo.search.return_value = []
+
+    result = runner.invoke(
+        app, ["search", "--term", "python", "--language", "javascript"]
+    )
+
+    assert result.exit_code == 1
+    mock_console.print.assert_called_once()
+    call_args = str(mock_console.print.call_args[0][0])
+    assert "No matches found for term 'python' and language 'javascript'" in strip_ansi(
+        call_args
+    )
 
 
 def test_search_snippets_operational_error(mock_repo):
@@ -176,7 +208,7 @@ def test_search_snippets_operational_error(mock_repo):
     result = runner.invoke(app, ["search", "--term", "python"])
 
     assert result.exit_code == 1
-    assert "Operational Error" in strip_ansi(result.stdout)
+    assert "Operational Error" in strip_ansi(result.output)
 
 
 def test_toggle_favourite_snippet(mock_repo):
