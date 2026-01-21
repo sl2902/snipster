@@ -6,7 +6,7 @@ from pydantic_core import ValidationError as PydanticValidationError
 
 from snipster import Snippet
 from snipster.api.dependencies import get_repo
-from snipster.api.schemas import SnippetCreate, SnippetResponse
+from snipster.api.schemas import MessageResponse, SnippetCreate, SnippetResponse
 from snipster.exceptions import (
     DuplicateSnippetError,
     MultipleSnippetsFoundError,
@@ -18,7 +18,9 @@ from snipster.repositories.repository import SnippetRepository
 router = APIRouter()
 
 
-@router.post("/snippets/v1/")
+@router.post(
+    "/snippets/v1/", response_model=MessageResponse, status_code=status.HTTP_201_CREATED
+)
 def create_snippet(
     *, repo: SnippetRepository = Depends(get_repo), snippet: SnippetCreate
 ):
@@ -33,14 +35,14 @@ def create_snippet(
     try:
         repo.add(db_snippet)
         logger.debug(f"Snippet with title '{db_snippet.title}' created")
-    except DuplicateSnippetError:
+    except DuplicateSnippetError as err:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="Snippet already exists"
-        )
-    except RepositoryError:
+        ) from err
+    except RepositoryError as err:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database error"
-        )
+        ) from err
     return {"message": f"Successfully created Snippet with title '{db_snippet.title}'"}
 
 
@@ -76,11 +78,11 @@ def get_snippet(*, repo: SnippetRepository = Depends(get_repo), snippet_id: int)
         )
 
 
-@router.delete("/snippets/v1/{snippet_id}")
+@router.delete("/snippets/v1/{snippet_id}", response_model=MessageResponse)
 def delete_snippet(*, repo: SnippetRepository = Depends(get_repo), snippet_id: int):
     try:
         repo.delete(snippet_id)
-        logger.debug(f"Snippet '{snippet_id}' is available for deletion")
+        logger.debug(f"Snippet '{snippet_id}' deleted successfully")
     except SnippetNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -88,7 +90,8 @@ def delete_snippet(*, repo: SnippetRepository = Depends(get_repo), snippet_id: i
         )
     except MultipleSnippetsFoundError:
         raise HTTPException(
-            status_code=409, detail=f"Multiple snippets found for snippet {snippet_id}"
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Multiple snippets found for snippet {snippet_id}",
         )
     except RepositoryError:
         raise HTTPException(
@@ -109,7 +112,9 @@ def search_snippets(
         if snippets:
             logger.debug(f"Matches found for search term '{term}'")
             return snippets
-    except ValueError:
+        logger.warning(
+            f"Search found no matches for term '{term}' and language '{language}'"
+        )
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Search yielded no snippets"
         )
@@ -119,7 +124,7 @@ def search_snippets(
         )
 
 
-@router.post("/snippets/v1/{snippet_id}/favourite")
+@router.post("/snippets/v1/{snippet_id}/favourite", response_model=MessageResponse)
 def toggle_favourite(*, repo: SnippetRepository = Depends(get_repo), snippet_id: int):
     try:
         favourited = repo.toggle_favourite(snippet_id)
@@ -137,7 +142,7 @@ def toggle_favourite(*, repo: SnippetRepository = Depends(get_repo), snippet_id:
     return {"message": f"Snippet '{snippet_id}' is {action}"}
 
 
-@router.post("/snippets/v1/{snippet_id}/tags")
+@router.post("/snippets/v1/{snippet_id}/tags", response_model=MessageResponse)
 def tag_snippet(
     *,
     repo: SnippetRepository = Depends(get_repo),
@@ -148,7 +153,7 @@ def tag_snippet(
 ):
     try:
         repo.tags(snippet_id, *tags, remove=remove, sort=sort)
-        logger.debug(f"Tag snippets for snippet '{snippet_id}")
+        logger.debug(f"Tag snippets for snippet '{snippet_id}'")
     except SnippetNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
