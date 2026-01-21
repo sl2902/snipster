@@ -193,14 +193,27 @@ def test_search_term_in_description(repo):
     assert all_snippets[0].description == snippet1.description
 
 
-def test_search_term_not_found_error(repo, snippet_factory):
-    """Test ValueError due to term not found"""
+def test_search_term_not_found(repo, snippet_factory):
+    """Test search that returns no results"""
     snippet1 = snippet_factory()
 
     repo.add(snippet1)
+    results = repo.search("search")
 
-    with pytest.raises(ValueError):
-        repo.search("missing_term")
+    assert len(results) == 0
+    assert isinstance(results, list)
+
+
+def test_search_term_found_but_lang_not_found(repo, mocker, snippet_factory):
+    """Test search with valid term but non-matching language returns empty list"""
+    mock_logger = mocker.patch("snipster.repositories.sql_model_repository.logger")
+    snippet1 = snippet_factory()
+
+    repo.add(snippet1)
+    results = repo.search("test", language="TypeScript")
+
+    assert len(results) == 0
+    mock_logger.warning.assert_called_once()
 
 
 def test_search_wildcard_percent_doesnt_match_all(repo):
@@ -243,9 +256,9 @@ def test_search_prevents_sql_injection_or_operator(repo, snippet_factory):
     snippet1 = snippet_factory()
 
     repo.add(snippet1)
+    results = repo.search("nonexistent' OR '1'='1")
 
-    with pytest.raises(ValueError):
-        repo.search("nonexistent' OR '1'='1")
+    assert len(results) == 0
 
 
 def test_toggle_favourite(repo, snippet_factory):
