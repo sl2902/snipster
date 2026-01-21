@@ -51,15 +51,18 @@ class SQLModelRepository(SnippetRepository):
                 if snippet.id not in all_snippets:
                     all_snippets[snippet.id] = snippet
         if not all_snippets:
-            logger.error(f"No matches found for term '{term}' in the Snippets model")
-            raise ValueError(
-                f"No matches found for term '{term}' in the Snippets model"
-            )
+            logger.warning(f"No matches found for term '{term}' in the Snippets model")
+            return []
         if language:
-            lang_filtered_snippets = []
-            for snippet in all_snippets.values():
-                if snippet.language.value.lower() == language.lower():
-                    lang_filtered_snippets.append(snippet)
+            lang_filtered_snippets = [
+                snippet
+                for snippet in all_snippets.values()
+                if snippet.language.value.lower() == language.lower()
+            ]
+            if not lang_filtered_snippets:
+                logger.warning(
+                    f"No matches found for term '{term}' and language {language} in the Snippets model"
+                )
             return lang_filtered_snippets
         return list(all_snippets.values())
 
