@@ -6,7 +6,11 @@ from loguru import logger
 
 from snipster import Language, Snippet
 from snipster.database_manager import DatabaseManager
-from snipster.exceptions import SnippetNotFoundError
+from snipster.exceptions import (
+    DuplicateSnippetError,
+    RepositoryError,
+    SnippetNotFoundError,
+)
 from snipster.repositories.repository import SnippetRepository
 
 
@@ -18,11 +22,15 @@ class SQLModelRepository(SnippetRepository):
         self.db_manager = DatabaseManager(self.db_url, echo)
 
     def add(self, snippet: Snippet) -> None:
-        is_inserted = self.db_manager.insert_record(Snippet, snippet)
-        if is_inserted:
-            logger.info("Added a single record successfully")
-        else:
+        try:
+            self.db_manager.insert_record(Snippet, snippet)
+        except DuplicateSnippetError:
             logger.warning(f"Duplicate record found: {snippet}")
+            raise
+        except RepositoryError:
+            logger.warning(f"Failed to add snippet: {snippet}")
+            raise
+        logger.info("Added a single record successfully")
 
     def list(self) -> List[Snippet]:
         return list(self.db_manager.select_all(Snippet))
@@ -32,7 +40,7 @@ class SQLModelRepository(SnippetRepository):
 
     def delete(self, snippet_id: int) -> None:
         self.db_manager.delete_record(Snippet, snippet_id)
-        logger.info(f"Record id {id} deleted successfully")
+        logger.info(f"Record id {snippet_id} deleted successfully")
 
     def search(self, term: str, *, language: str | None = None) -> List[Snippet]:
         cols_to_search = ["title", "code", "description"]
@@ -43,13 +51,18 @@ class SQLModelRepository(SnippetRepository):
                 if snippet.id not in all_snippets:
                     all_snippets[snippet.id] = snippet
         if not all_snippets:
-            logger.error(f"No matches found for term {term} in the Snippets model")
-            raise ValueError(f"No matches found for term {term} in the Snippets model")
+            logger.warning(f"No matches found for term '{term}' in the Snippets model")
+            return []
         if language:
-            lang_filtered_snippets = []
-            for snippet in all_snippets.values():
-                if snippet.language.value.lower() == language.lower():
-                    lang_filtered_snippets.append(snippet)
+            lang_filtered_snippets = [
+                snippet
+                for snippet in all_snippets.values()
+                if snippet.language.value.lower() == language.lower()
+            ]
+            if not lang_filtered_snippets:
+                logger.warning(
+                    f"No matches found for term '{term}' and language {language} in the Snippets model"
+                )
             return lang_filtered_snippets
         return list(all_snippets.values())
 
