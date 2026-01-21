@@ -75,7 +75,7 @@ def test_create_snippet(client, sql_repo):
             "tags": "tag1,tag2",
         },
     )
-    assert response.status_code == status.HTTP_200_OK
+    assert response.status_code == status.HTTP_201_CREATED
     data = response.json()
     assert data["message"] == "Successfully created Snippet with title 'first'"
 
@@ -330,6 +330,7 @@ def test_tag_snippets_non_existstent(client):
         ("POST", "/snippets/v1/1/favourite", None, "toggle_favourite"),
         ("POST", "/snippets/v1/1/tags?tags=tag1&tags=tag2", None, "tags"),
     ],
+    ids=["create", "list", "get", "delete", "search", "toggle_favourite", "tags"],
 )
 def test_routes_operational_errors_logged(
     client, sql_repo, mocker, method, path, json_data, repo_method
@@ -346,7 +347,6 @@ def test_routes_operational_errors_logged(
     elif method == "DELETE":
         response = client.delete(path)
 
-    print(response.url)
-    assert response.status_code == 500
+    assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
     data = response.json()
     assert data["detail"] == "Database error"
