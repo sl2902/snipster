@@ -2,6 +2,7 @@
 
 import typer
 from loguru import logger
+from pydantic_core import ValidationError as PydanticValidationError
 from rich.console import Console
 from rich.table import Table
 
@@ -52,21 +53,26 @@ def add(
         help=f"Programming language. Valid: {'|'.join(lang for lang in Language)}",
     ),
     tags: str = typer.Option(None, help="Optional comma separated tags"),
-    favorite: bool = typer.Option(default=False, help="Favourite snippet"),
     ctx: typer.Context = None,
 ):
     """Add a new code snippet"""
-    repo = ctx.obj
-    repo.add(
-        Snippet(
-            title=title,
-            code=code,
-            description=description,
-            language=language,
-            tags=tags,
-            favorite=favorite,
+    snippet_dict = {
+        "title": title,
+        "code": code,
+        "description": description,
+        "language": language,
+        "tags": tags,
+    }
+    try:
+        snippet = Snippet.model_validate(snippet_dict)
+    except PydanticValidationError as e:
+        errors = {err["loc"][0]: err["msg"] for err in e.errors()}
+        console.print(
+            f":cross_mark: [bold red]Model validation failed: {errors}[/bold red]"
         )
-    )
+        raise typer.Exit(code=1)
+    repo = ctx.obj
+    repo.add(snippet)
     console.print(
         f":white_check_mark: [bold green]Snippet '{title}' added[/bold green]"
     )
@@ -153,22 +159,30 @@ def search(
 
     try:
         matches = repo.search(term, language=language)
-        table = create_table_header(title=f"Search results for term {term}")
-        for snippet in matches:
-            table.add_row(
-                str(snippet.id),
-                snippet.title,
-                snippet.code,
-                snippet.description,
-                snippet.language.value,
-                snippet.tags or "-",
-                ":star:" if snippet.favorite else "",
-                snippet.created_at.strftime("%Y-%m-%d") if snippet.created_at else "-",
-            )
-        console.print(table)
-    except ValueError:
-        console.print(f"[yellow]No matches found for {term}[/yellow]")
-        raise typer.Exit(code=1)
+        if matches:
+            table = create_table_header(title=f"Search results for term {term}")
+            for snippet in matches:
+                table.add_row(
+                    str(snippet.id),
+                    snippet.title,
+                    snippet.code,
+                    snippet.description,
+                    snippet.language.value,
+                    snippet.tags or "-",
+                    ":star:" if snippet.favorite else "",
+                    snippet.created_at.strftime("%Y-%m-%d")
+                    if snippet.created_at
+                    else "-",
+                )
+            console.print(table)
+        else:
+            if not language:
+                console.print(f"[yellow]No matches found for term '{term}'[/yellow]")
+            else:
+                console.print(
+                    f"[yellow]No matches found for term '{term}' and language '{language}'[/yellow]"
+                )
+            raise typer.Exit(code=1)
     except RepositoryError as err:
         console.print(f"[bold red] Operational Error: {err}[/bold red]")
         raise typer.Exit(code=1)
