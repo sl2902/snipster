@@ -5,7 +5,8 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 from sqlmodel import SQLModel
 
-from snipster.models import Language, SnippetBase
+from snipster.models import SnippetBase
+from snipster.types import Language
 
 
 class SnippetCreate(SQLModel):
