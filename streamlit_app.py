@@ -6,9 +6,9 @@ from decouple import config
 from fastapi import Response, status
 from loguru import logger
 
-# from snipster import Language
+from snipster import Language
 
-LANGUAGES = ["JavaScript", "Python", "TypeScript"]
+LANGUAGES = sorted([lang.value for lang in Language])
 API_URL = config("API_URL", "http://127.0.0.1:8000")
 
 st.set_page_config(
@@ -334,7 +334,7 @@ elif st.session_state.current_view == "add":
     if submitted:
         logger.info("Snippet Form submitted")
         response = create_snippet(add_endpoint_url, snippet)
-        if response.status_code == status.HTTP_200_OK:
+        if response.status_code == status.HTTP_201_CREATED:
             logger.info("Snippet successfully created")
             st.success("✅ Snippet successfully created!")
         elif response.status_code == status.HTTP_409_CONFLICT:
