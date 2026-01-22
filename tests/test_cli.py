@@ -25,7 +25,16 @@ def strip_ansi(text):
 def test_add_snippet(mock_repo):
     """Test adding a snippet via CLI"""
     result = runner.invoke(
-        app, ["add", "--title", "Test snippet", "--code", "print('hello')"]
+        app,
+        [
+            "add",
+            "--title",
+            "Test snippet",
+            "--code",
+            "print('hello')",
+            "--language",
+            "Python",
+        ],
     )
 
     assert result.exit_code == 0
@@ -38,7 +47,9 @@ def test_add_command_model_validation_error(mock_repo, mocker):
 
     mock_console = mocker.patch("snipster.cli.console")
 
-    result = runner.invoke(app, ["add", "--title", "Te", "--code", "print('test')"])
+    result = runner.invoke(
+        app, ["add", "--title", "Te", "--code", "print('test')", "--language", "Python"]
+    )
 
     assert result.exit_code == 1
     mock_console.print.assert_called()
