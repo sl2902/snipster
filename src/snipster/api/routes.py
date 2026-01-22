@@ -4,7 +4,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from loguru import logger
 from pydantic_core import ValidationError as PydanticValidationError
 
-from snipster import Snippet
 from snipster.api.dependencies import get_repo
 from snipster.api.schemas import MessageResponse, SnippetCreate, SnippetResponse
 from snipster.exceptions import (
@@ -13,6 +12,7 @@ from snipster.exceptions import (
     RepositoryError,
     SnippetNotFoundError,
 )
+from snipster.models import Snippet
 from snipster.repositories.repository import SnippetRepository
 
 router = APIRouter()

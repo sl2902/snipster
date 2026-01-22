@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from typing import List
 
-from snipster import Snippet
+from snipster.models import Snippet
 
 TAG_SEPARATOR = ", "
 

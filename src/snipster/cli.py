@@ -6,9 +6,10 @@ from pydantic_core import ValidationError as PydanticValidationError
 from rich.console import Console
 from rich.table import Table
 
-from snipster import Language, Snippet
 from snipster.exceptions import RepositoryError, SnippetNotFoundError
+from snipster.models import Snippet
 from snipster.repositories.backend import create_repository
+from snipster.types import Language
 
 app = typer.Typer()
 console = Console()

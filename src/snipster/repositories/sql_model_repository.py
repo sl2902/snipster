@@ -4,14 +4,15 @@ from typing import List
 
 from loguru import logger
 
-from snipster import Language, Snippet
 from snipster.database_manager import DatabaseManager
 from snipster.exceptions import (
     DuplicateSnippetError,
     RepositoryError,
     SnippetNotFoundError,
 )
+from snipster.models import Snippet
 from snipster.repositories.repository import SnippetRepository
+from snipster.types import Language
 
 
 class SQLModelRepository(SnippetRepository):
