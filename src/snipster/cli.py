@@ -50,6 +50,7 @@ def add(
     description: str = typer.Option(None, help="Optional description"),
     language: str = typer.Option(
         Language.PYTHON.value,
+        prompt=f"Language [{', '.join([lang.value for lang in Language])}]",
         help=f"Programming language. Valid: {'|'.join(lang for lang in Language)}",
     ),
     tags: str = typer.Option(None, help="Optional comma separated tags"),
