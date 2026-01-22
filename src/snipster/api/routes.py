@@ -51,7 +51,7 @@ def list_snippets(*, repo: SnippetRepository = Depends(get_repo)):
     try:
         snippets = repo.list()
         if snippets:
-            logger.debug(f"{len(snippets)} found in repository")
+            logger.debug(f"{len(snippets)} snippets found in repository")
             return snippets
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="No snippets in repository"
