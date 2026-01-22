@@ -34,3 +34,6 @@ dev = [
 omit = [
     "src/snipster/api/main.py",
 ]
+
+[tool.setuptools.packages.find]
+where = ["src"]
