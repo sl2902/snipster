@@ -6,7 +6,8 @@ from sqlalchemy.exc import (
     OperationalError,
 )
 
-from snipster import DatabaseManager, Language, Snippet
+from snipster import Language, Snippet
+from snipster.database_manager import DatabaseManager
 from snipster.exceptions import (
     DuplicateSnippetError,
     RepositoryError,
