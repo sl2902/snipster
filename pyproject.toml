@@ -1,6 +1,6 @@
 [project]
 name = "snipster-app"
-version = "0.1.1"
+version = "0.1.5"
 description = "A lightweight code snippet management system with CLI, API, and web interface"
 readme = "README.md"
 authors = [
@@ -19,6 +19,7 @@ dependencies = [
 
 [project.scripts]
 snipster = "snipster.cli:app"
+snipster-web = "snipster.streamlit_app:main"
 
 [build-system]
 requires = ["hatchling"]
