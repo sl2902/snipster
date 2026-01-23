@@ -1,10 +1,10 @@
 [project]
-name = "snipster"
-version = "0.1.0"
-description = "Add your description here"
+name = "snipster-app"
+version = "0.1.1"
+description = "A lightweight code snippet management system with CLI, API, and web interface"
 readme = "README.md"
 authors = [
-    { name = "sl2902", email = "" }
+    { name = "sl02", email = "" }
 ]
 requires-python = ">=3.13"
 dependencies = [
@@ -37,3 +37,9 @@ omit = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.uv.workspace]
+members = ["snipster-sl"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/snipster"]
