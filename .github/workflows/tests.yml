@@ -32,6 +32,6 @@ jobs:
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
-        with:
-          fail_ci_if_error: false  # Don't fail the workflow if upload fails
-          verbose: true
+        # with:
+        #   fail_ci_if_error: false  # Don't fail the workflow if upload fails
+        #   verbose: true
