@@ -29,3 +29,6 @@ jobs:
 
       - name: Run tests
         run: uv run pytest tests --cov=snipster
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
