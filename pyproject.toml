@@ -1,6 +1,6 @@
 [project]
 name = "snipster-app"
-version = "0.1.5"
+version = "0.1.6"
 description = "A lightweight code snippet management system with CLI, API, and web interface"
 readme = "README.md"
 authors = [
@@ -34,6 +34,7 @@ dev = [
 [tool.coverage.run]
 omit = [
     "src/snipster/api/main.py",
+    "src/snipster/web.py",
 ]
 
 [tool.setuptools.packages.find]
