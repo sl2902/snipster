@@ -1,7 +1,7 @@
 # Snipster
 
 [![PyPI version](https://badge.fury.io/py/snipster-app.svg)](https://badge.fury.io/py/snipster-app)
-[![Python Version](https://img.shields.io/pypi/pyversions/snipster-app.svg)](https://pypi.org/project/snipster-app/)
+[![Python Version](https://img.shields.io/badge/python-3.13+-blue)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Downloads](https://static.pepy.tech/badge/snipster-app)](https://pepy.tech/project/snipster-app)
 [![Downloads](https://static.pepy.tech/badge/snipster-app/month)](https://pepy.tech/project/snipster-app)
