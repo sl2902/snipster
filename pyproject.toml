@@ -34,7 +34,7 @@ dev = [
 [tool.coverage.run]
 omit = [
     "src/snipster/api/main.py",
-    "src/snipster/snipster_app.py",
+    "src/snipster/streamlit_app.py",
 ]
 
 [tool.setuptools.packages.find]
