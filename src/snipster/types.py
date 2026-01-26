@@ -1,7 +1,7 @@
-from enum import Enum  # pragma: no cover
+from enum import Enum
 
 
-class Language(str, Enum):  # pragma: no cover
+class Language(str, Enum):
     """Supported programming languages for code snippets.
 
     Inherits from str to allow direct string comparison in queries
