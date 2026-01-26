@@ -466,7 +466,3 @@ def main():
 
     sys.argv = ["streamlit", "run", __file__]
     sys.exit(stcli.main())
-
-
-# if __name__ == "__main__":
-#     main()
