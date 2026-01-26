@@ -1,25 +1,13 @@
 """Define models class"""
 
 from datetime import datetime, timezone
-from enum import Enum
 
 from loguru import logger
 from pydantic import ConfigDict, field_validator
 from sqlmodel import Field, SQLModel, UniqueConstraint
 
 from snipster.database_manager import DatabaseManager
-
-
-class Language(str, Enum):
-    """Supported programming languages for code snippets.
-
-    Inherits from str to allow direct string comparison in queries
-    and JSON serialization.
-    """
-
-    PYTHON = "Python"
-    JAVASCRIPT = "JavaScript"
-    TYPESCRIPT = "TypeScript"
+from snipster.types import Language
 
 
 class SnippetBase(SQLModel):
@@ -81,7 +69,12 @@ class Snippet(SnippetBase, table=True):
             raise ValueError("Title must be at least 3 characters")
         return v
 
-    __table_args__ = (UniqueConstraint("title", "language"),)
+    __table_args__ = (
+        UniqueConstraint("title", "language"),
+        # Table 'snippet' is already defined for this MetaData instance.
+        # Specify 'extend_existing=True' to redefine options and columns on an existing Table
+        {"extend_existing": True},
+    )
 
 
 if __name__ == "__main__":  # pragma: no cover

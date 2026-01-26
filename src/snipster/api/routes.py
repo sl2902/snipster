@@ -4,7 +4,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from loguru import logger
 from pydantic_core import ValidationError as PydanticValidationError
 
-from snipster import Snippet
 from snipster.api.dependencies import get_repo
 from snipster.api.schemas import MessageResponse, SnippetCreate, SnippetResponse
 from snipster.exceptions import (
@@ -13,6 +12,7 @@ from snipster.exceptions import (
     RepositoryError,
     SnippetNotFoundError,
 )
+from snipster.models import Snippet
 from snipster.repositories.repository import SnippetRepository
 
 router = APIRouter()
@@ -51,7 +51,7 @@ def list_snippets(*, repo: SnippetRepository = Depends(get_repo)):
     try:
         snippets = repo.list()
         if snippets:
-            logger.debug(f"{len(snippets)} found in repository")
+            logger.debug(f"{len(snippets)} snippets found in repository")
             return snippets
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="No snippets in repository"

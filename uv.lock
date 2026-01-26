@@ -1345,8 +1345,8 @@ wheels = [
 ]
 
 [[package]]
-name = "snipster"
-version = "0.1.0"
+name = "snipster-app"
+version = "0.1.6"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi", extra = ["all"] },

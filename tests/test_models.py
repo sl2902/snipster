@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import pytest
 from pydantic_core import ValidationError
 
-from snipster.models import Language, Snippet
+from snipster import Language, Snippet
 
 
 @pytest.fixture
