@@ -71,6 +71,8 @@ class Snippet(SnippetBase, table=True):
 
     __table_args__ = (
         UniqueConstraint("title", "language"),
+        # Table 'snippet' is already defined for this MetaData instance.
+        # Specify 'extend_existing=True' to redefine options and columns on an existing Table
         {"extend_existing": True},
     )
 
