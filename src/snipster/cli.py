@@ -6,7 +6,11 @@ from pydantic_core import ValidationError as PydanticValidationError
 from rich.console import Console
 from rich.table import Table
 
-from snipster.exceptions import RepositoryError, SnippetNotFoundError
+from snipster.exceptions import (
+    DuplicateGistError,
+    RepositoryError,
+    SnippetNotFoundError,
+)
 from snipster.models import Snippet
 from snipster.repositories.backend import create_repository
 from snipster.types import Language
@@ -233,6 +237,38 @@ def tags(
         console.print(
             f":cross_mark: [bold red]Snippet '{snippet_id}' not found[/bold red]"
         )
+        raise typer.Exit(code=1)
+
+
+@app.command()
+def gist(
+    snippet_id: int = typer.Option(..., prompt=True),
+    is_public: bool = typer.Option(True, help="True to publish gist. Default is True"),
+    ctx: typer.Context = None,
+):
+    """Create gist"""
+    repo = ctx.obj
+
+    snippet = repo.get(snippet_id)
+    if snippet:
+        try:
+            repo.create_gist(
+                snippet_id,
+                snippet.code,
+                snippet.title,
+                snippet.language,
+                is_public=is_public,
+            )
+            console.print(
+                f":white_check_mark: [bold green]Gist added for snippet '{snippet_id}'[/bold green]"
+            )
+        except DuplicateGistError:
+            console.print(
+                f":cross_mark: [bold red]Duplicate gist found for snippet '{snippet_id}'[/bold red]"
+            )
+            raise typer.Exit(code=1)
+    else:
+        console.print(f"\n[yellow]No snippet found for id {snippet_id}[/yellow]")
         raise typer.Exit(code=1)
 
 
