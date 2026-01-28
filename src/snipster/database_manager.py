@@ -5,24 +5,19 @@ from typing import Any, Type
 
 from decouple import config
 from loguru import logger
-from sqlalchemy import func
+from sqlalchemy import event, func
 from sqlalchemy.exc import (
     IntegrityError,
     MultipleResultsFound,
     NoResultFound,
     OperationalError,
+    SQLAlchemyError,
 )
 from sqlmodel import (
     Session,
     SQLModel,
     create_engine,
     select,
-)
-
-from snipster.exceptions import (
-    DuplicateSnippetError,
-    RepositoryError,
-    SnippetNotFoundError,
 )
 
 
@@ -36,6 +31,17 @@ class DatabaseManager:
 
         self.db_url = db_url
         self.engine = create_engine(self.db_url, echo=echo)
+
+        if "sqlite" in self.db_url.lower():
+
+            @event.listens_for(self.engine, "connect")
+            def set_sqlite_pragma(dbapi_conn, connection_record):
+                cursor = dbapi_conn.cursor()
+                cursor.execute("PRAGMA foreign_keys=ON")
+                cursor.close()
+
+            logger.info("SQLite foreign keys enabled")
+
         self.create_db_and_models()
 
     def create_db_and_models(self):
@@ -55,7 +61,8 @@ class DatabaseManager:
             The matching record if found, None otherwise
 
         Raises:
-            RepositoryError: If the database operation fails.
+            OperationalError: For connection failures, deadlocks.
+            SQLAlchemyError: For all remaining database operations.
         """
         with Session(self.engine) as session:
             try:
@@ -64,9 +71,12 @@ class DatabaseManager:
                 logger.error(
                     f"Select by id {pk} on model {model.__name__} failed: {err}"
                 )
-                raise RepositoryError(
-                    f"Select by id {pk} on model {model.__name__} failed: {err}"
-                ) from err
+                raise
+            except SQLAlchemyError as err:
+                logger.error(
+                    f"Database operation on model {model.__name__} failed: {err}"
+                )
+                raise
 
     def select_all(
         self, model: Type[SQLModel], limit: int = None
@@ -82,22 +92,27 @@ class DatabaseManager:
             List of all matching records, or empty list if none found
 
         Raises:
-            RepositoryError: If the database operation fails.
+            OperationalError: For connection failures, deadlocks.
+            SQLAlchemyError: For all remaining database operations.
         """
         with Session(self.engine) as session:
             try:
                 statement = select(model).limit(limit)
                 results = session.exec(statement)
                 return results.all()
+            except NoResultFound:  # pragma: no cover
+                logger.warning(f"No result found in model {model.__name__}")
+                raise
             except OperationalError as err:
                 logger.error(
                     f"Select all records on model {model.__name__} failed: {err}"
                 )
-                raise RepositoryError(
-                    f"Select all records on model {model.__name__} failed: {err}"
-                ) from err
-            except NoResultFound:  # pragma: no cover
-                logger.warning(f"No result found in model {model.__name__}")
+                raise
+            except SQLAlchemyError as err:
+                logger.error(
+                    f"Database operation on model {model.__name__} failed: {err}"
+                )
+                raise
 
     def select_with_filter(
         self, model: Type[SQLModel], col: str, term: str = ""
@@ -114,7 +129,8 @@ class DatabaseManager:
             List of all matching records, or empty list if none found
 
         Raises:
-            RepositoryError: If the database operation fails.
+            OperationalError: For connection failures, deadlocks.
+            SQLAlchemyError: For all remaining database operations.
         """
         escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         with Session(self.engine) as session:
@@ -134,9 +150,12 @@ class DatabaseManager:
                 logger.error(
                     f"Select by filter on model {model.__name__} failed: {err}"
                 )
-                raise RepositoryError(
-                    f"Select by filter on model {model.__name__} failed: {err}"
-                ) from err
+                raise
+            except SQLAlchemyError as err:
+                logger.error(
+                    f"Database operation on model {model.__name__} failed: {err}"
+                )
+                raise
 
     @staticmethod
     def _load_batches(session, records: list[SQLModel]):
@@ -162,27 +181,30 @@ class DatabaseManager:
             None
 
         Raises:
-            DuplicateSnippetError: If a duplicate snippet was inserted.
-            RepositoryError: If the database operation fails.
+            IntegrityError: If a duplicate record was inserted.
+            OperationalError: For connection failures, deadlocks.
+            SQLAlchemyError: For all remaining database operations.
         """
         with Session(self.engine) as session:
             logger.debug("Inserting single model instance")
             try:
                 self._load_batches(session, [record])
-            except IntegrityError as err:
+            except IntegrityError:
                 logger.warning(f"Duplicate record found in model {model.__name__}.")
                 session.rollback()
-                raise DuplicateSnippetError(
-                    f"Duplicate record found in model {model.__name__}."
-                ) from err
+                raise
             except OperationalError as err:
                 logger.error(
                     f"Insert statement failed for model {model.__name__}: {err}"
                 )
                 session.rollback()
-                raise RepositoryError(
-                    f"Insert statement failed for model {model.__name__}: {err}"
-                ) from err
+                raise
+            except SQLAlchemyError as err:
+                logger.error(
+                    f"Database operation on model {model.__name__} failed: {err}"
+                )
+                session.rollback()
+                raise
 
         logger.info(f"Successfully inserted record into model {model.__name__}")
         return True
@@ -229,6 +251,12 @@ class DatabaseManager:
                         f"Insert statement failed for model {model.__name__}: {err}"
                     )
                     session.rollback()
+                except SQLAlchemyError as err:
+                    session.rollback()
+                    logger.error(
+                        f"Database operation on model {model.__name__} failed: {err}"
+                    )
+                    raise
 
         if n_dups > 0:
             logger.info(f"Number of duplicates skipped {n_dups}")
@@ -245,13 +273,14 @@ class DatabaseManager:
 
         Args:
             model: The SQLModel class to insert a single record
-            pk: Unique record identifer
+            pk: Unique record identifier
 
         Returns:
             None
 
         Raises:
-            RepositoryError: If the database operation fails.
+            OperationalError: For connection failures, deadlocks.
+            SQLAlchemyError: For all remaining database operations.
         """
         with Session(self.engine) as session:
             logger.debug("Deleting single model instance")
@@ -262,13 +291,11 @@ class DatabaseManager:
                 logger.debug(f"Record to delete {to_delete}")
                 session.delete(to_delete)
                 session.commit()
-            except NoResultFound as err:
+            except NoResultFound:
                 logger.error(
                     f"Record with id {pk} does not exist in model {model.__name__}"
                 )
-                raise SnippetNotFoundError(
-                    f"Record with id {pk} does not exist in model {model.__name__}"
-                ) from err
+                raise
             except MultipleResultsFound as err:
                 session.rollback()
                 logger.error(
@@ -280,9 +307,13 @@ class DatabaseManager:
                 logger.error(
                     f"Delete statement failed for id {pk} in model {model.__name__}: {err}"
                 )
-                raise RepositoryError(
-                    f"Delete statement failed for id {pk} in model {model.__name__}: {err}"
-                ) from err
+                raise
+            except SQLAlchemyError as err:
+                session.rollback()
+                logger.error(
+                    f"Database operation on model {model.__name__} failed: {err}"
+                )
+                raise
 
         logger.info(f"Successfully deleted record id {pk} from model {model.__name__}")
 
@@ -292,7 +323,7 @@ class DatabaseManager:
 
         Args:
             model: The SQLModel class to update a single record
-            pk: Unique record identifer
+            pk: Unique record identifier
             col: Model field to update
             value: New value to replace the old value
 
@@ -300,7 +331,8 @@ class DatabaseManager:
             None
 
         Raises:
-            RepositoryError: If the database operation fails.
+            OperationalError: For connection failures, deadlocks.
+            SQLAlchemyError: For all remaining database operations.
         """
         with Session(self.engine) as session:
             logger.debug(f"Updating single model instance id {pk}")
@@ -318,21 +350,23 @@ class DatabaseManager:
                 session.add(model_obj)
                 session.commit()
                 session.refresh(model_obj)
-            except NoResultFound as err:
+            except NoResultFound:
                 logger.error(
                     f"Record with id {pk} does not exist in model {model.__name__}"
                 )
-                raise SnippetNotFoundError(
-                    f"Record with id {pk} does not exist in model {model.__name__}"
-                ) from err
+                raise
             except OperationalError as err:
                 logger.error(
                     f"Update statement failed for id {pk} in model {model.__name__}: {err}"
                 )
                 session.rollback()
-                raise RepositoryError(
-                    f"Update failed for {model.__name__} id {pk}: {err}"
-                ) from err
+                raise
+            except SQLAlchemyError as err:
+                session.rollback()
+                logger.error(
+                    f"Database operation on model {model.__name__} failed: {err}"
+                )
+                raise
 
 
 if __name__ == "__main__":  # pragma: no cover
