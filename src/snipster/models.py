@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from loguru import logger
 from pydantic import ConfigDict, field_validator
-from sqlmodel import Field, SQLModel, UniqueConstraint
+from sqlmodel import Field, Relationship, SQLModel, UniqueConstraint
 
 from snipster.database_manager import DatabaseManager
 from snipster.types import Language
@@ -60,7 +60,6 @@ class Snippet(SnippetBase, table=True):
 
     # https://github.com/fastapi/sqlmodel/issues/52#issuecomment-2495817760
     model_config = ConfigDict(validate_assignment=True, from_attributes=True)
-    # __table_args__ = {"extend_existing": True}
 
     @field_validator("title")
     @classmethod
@@ -76,6 +75,41 @@ class Snippet(SnippetBase, table=True):
         {"extend_existing": True},
     )
 
+
+class GistBase(SQLModel):
+    """Shared fields for all the Gist schemas"""
+
+    snippet_id: int = Field(
+        foreign_key="snippet.id",
+        unique=True,
+        description="ID of the snippet this gist represents",
+        ondelete="CASCADE",
+    )
+    gist_id: str = Field(..., description="GitHub Gist ID")
+    gist_url: str = Field(..., description="Full GitHub Gist URL")
+
+
+class Gist(GistBase, table=True):
+    """A Gist of a snippet"""
+
+    id: int | None = Field(default=None, primary_key=True)
+    is_public: bool = Field(
+        default=True, description="Whether to make the Gist public or not"
+    )
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Gist creation timestamp",
+    )
+
+    __table_args__ = ({"extend_existing": True},)
+
+
+Snippet.gist = Relationship(
+    back_populates="snippet",
+    cascade_delete=True,
+    sa_relationship_kwargs={"uselist": False},  # 1:1 relationship
+)
+Gist.snippet = Relationship(back_populates="gist")
 
 if __name__ == "__main__":  # pragma: no cover
     db_manager = DatabaseManager(echo=False)
