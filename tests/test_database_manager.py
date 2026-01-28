@@ -4,15 +4,11 @@ from sqlalchemy.exc import (
     MultipleResultsFound,
     NoResultFound,
     OperationalError,
+    SQLAlchemyError,
 )
 
 from snipster import Language, Snippet
 from snipster.database_manager import DatabaseManager
-from snipster.exceptions import (
-    DuplicateSnippetError,
-    RepositoryError,
-    SnippetNotFoundError,
-)
 
 
 @pytest.fixture(scope="function")
@@ -156,7 +152,7 @@ class TestInsertSingleRecord:
         assert actual.language == "Python"
 
     def test_insert_duplicate_record(self, db_manager):
-        with pytest.raises(DuplicateSnippetError):
+        with pytest.raises(IntegrityError):
             for _ in range(2):
                 snippet = Snippet(
                     title="Function Definition",
@@ -327,7 +323,7 @@ class TestDeleteSingleRecordOperations:
             "Mock DB error", None, None
         )
 
-        with pytest.raises(SnippetNotFoundError):
+        with pytest.raises(NoResultFound):
             db_manager.delete_record(Snippet, 1)
 
     def test_delete_multi_result_records(self, mocker, db_manager):
@@ -370,7 +366,7 @@ class TestUpdateSingleRecordOperatons:
             "Mock DB error", None, None
         )
 
-        with pytest.raises(SnippetNotFoundError):
+        with pytest.raises(NoResultFound):
             db_manager.update(Snippet, 999, col="favorite", value=True)
 
 
@@ -397,7 +393,7 @@ def test_operational_errors_are_logged(
         mock_session.return_value.__enter__.return_value.commit.side_effect = (
             OperationalError("Mock DB error", None, None)
         )
-        with pytest.raises(RepositoryError):
+        with pytest.raises(OperationalError):
             db_manager.delete_record(Snippet, 1)
     elif error_scenarios == "insert_records":
         mock_session.return_value.__enter__.return_value.commit.side_effect = (
@@ -408,39 +404,106 @@ def test_operational_errors_are_logged(
         mock_session.return_value.__enter__.return_value.commit.side_effect = (
             IntegrityError("Mock DB error", None, None)
         )
-        with pytest.raises(DuplicateSnippetError):
+        with pytest.raises(IntegrityError):
             db_manager.insert_record(Snippet, sample_snippet)
         mock_logger.warning.assert_called_once()
 
         mock_session.return_value.__enter__.return_value.commit.side_effect = (
             OperationalError("Mock DB error", None, None)
         )
-        with pytest.raises(RepositoryError):
+        with pytest.raises(OperationalError):
             db_manager.insert_record(Snippet, sample_snippet)
     elif error_scenarios == "select_by_id":
         mock_session.return_value.__enter__.return_value.get.side_effect = (
             OperationalError("Mock DB error", None, None)
         )
-        with pytest.raises(RepositoryError):
+        with pytest.raises(OperationalError):
             db_manager.select_by_id(Snippet, pk=1)
     elif error_scenarios == "select_all":
         mock_session.return_value.__enter__.return_value.exec.side_effect = (
             OperationalError("Mock DB error", None, None)
         )
-        with pytest.raises(RepositoryError):
+        with pytest.raises(OperationalError):
             db_manager.select_all(Snippet)
     elif error_scenarios == "select_with_filter":
         mock_session.return_value.__enter__.return_value.exec.side_effect = (
             OperationalError("Mock DB error", None, None)
         )
-        with pytest.raises(RepositoryError):
+        with pytest.raises(OperationalError):
             db_manager.select_with_filter(Snippet, col="title")
     elif error_scenarios == "update":
         mock_session.return_value.__enter__.return_value.exec.side_effect = (
             OperationalError("Mock DB error", None, None)
         )
-        with pytest.raises(RepositoryError):
+        with pytest.raises(OperationalError):
             db_manager.update(Snippet, pk=1, col="favorite", value=True)
 
     if error_scenarios != "insert_record":
         mock_logger.error.assert_called_once()
+
+
+class MockSQLError(SQLAlchemyError):
+    pass
+
+
+@pytest.mark.parametrize(
+    "error_scenarios",
+    [
+        "delete_record",
+        "insert_record",
+        "insert_records",
+        "select_by_id",
+        "select_all",
+        "select_with_filter",
+        "update",
+    ],
+)
+def test_database_errors_are_logged(
+    db_manager, mocker, sample_snippet, error_scenarios
+):
+    """Test that all DB operations log DatabaseErrors properly."""
+    mocker.patch("snipster.database_manager.logger")
+    mock_session = mocker.patch("snipster.database_manager.Session")
+
+    if error_scenarios == "select_all":
+        mock_session.return_value.__enter__.return_value.exec.side_effect = (
+            MockSQLError("Mock")
+        )
+        with pytest.raises(SQLAlchemyError):
+            db_manager.select_all(Snippet, 1)
+    elif error_scenarios == "select_by_id":
+        mock_session.return_value.__enter__.return_value.get.side_effect = MockSQLError(
+            "Mock"
+        )
+        with pytest.raises(SQLAlchemyError):
+            db_manager.select_by_id(Snippet, pk=1)
+    elif error_scenarios == "select_with_filter":
+        mock_session.return_value.__enter__.return_value.exec.side_effect = (
+            MockSQLError("Mock")
+        )
+        with pytest.raises(SQLAlchemyError):
+            db_manager.select_with_filter(Snippet, col="title")
+    elif error_scenarios == "insert_record":
+        mock_session.return_value.__enter__.return_value.commit.side_effect = (
+            MockSQLError("Mock")
+        )
+        with pytest.raises(SQLAlchemyError):
+            db_manager.insert_record(Snippet, sample_snippet)
+    elif error_scenarios == "insert_records":
+        mock_session.return_value.__enter__.return_value.commit.side_effect = (
+            MockSQLError("Mock")
+        )
+        with pytest.raises(SQLAlchemyError):
+            db_manager.insert_records(Snippet, [sample_snippet])
+    elif error_scenarios == "delete_record":
+        mock_session.return_value.__enter__.return_value.commit.side_effect = (
+            MockSQLError("Mock")
+        )
+        with pytest.raises(SQLAlchemyError):
+            db_manager.delete_record(Snippet, 1)
+    elif error_scenarios == "update":
+        mock_session.return_value.__enter__.return_value.exec.side_effect = (
+            MockSQLError("Mock")
+        )
+        with pytest.raises(SQLAlchemyError):
+            db_manager.update(Snippet, pk=1, col="favorite", value=True)
