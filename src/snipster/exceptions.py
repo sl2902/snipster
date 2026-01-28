@@ -19,6 +19,12 @@ class RepositoryError(SnipsterError):
     pass
 
 
+class DatabaseConnectionError(SnipsterError):
+    """Database connection/operational issues"""
+
+    pass
+
+
 class DuplicateSnippetError(SnipsterError):
     """
     Raised when attempting to add a snippet that already exists.
@@ -31,5 +37,11 @@ class MultipleSnippetsFoundError(SnipsterError):
     """
     Raised when attempting to delete multiple snippets against a single snippet id.
     """
+
+    pass
+
+
+class DuplicateGistError(SnipsterError):
+    """Raised when attempting to create a gist for a snippet that already has one"""
 
     pass
