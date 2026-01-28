@@ -11,3 +11,18 @@ class Language(str, Enum):
     PYTHON = "Python"
     JAVASCRIPT = "JavaScript"
     TYPESCRIPT = "TypeScript"
+
+    def get_extension(self):
+        """Get file extension for this language"""
+        extensions = {
+            Language.PYTHON: "py",
+            Language.JAVASCRIPT: "js",
+            Language.TYPESCRIPT: "ts",
+        }
+
+        return extensions[self]
+
+    @classmethod
+    def extension_for(cls, language: str) -> str:
+        """Get extension from language string"""
+        return cls(language).get_extension()
