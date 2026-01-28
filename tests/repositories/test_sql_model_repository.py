@@ -1,11 +1,18 @@
+import httpx
 import pytest
 from sqlalchemy.exc import (
+    IntegrityError,
+    MultipleResultsFound,
     OperationalError,
+    SQLAlchemyError,
 )
 
 from snipster import Language, Snippet
 from snipster.exceptions import (
+    DatabaseConnectionError,
+    DuplicateGistError,
     DuplicateSnippetError,
+    MultipleSnippetsFoundError,
     RepositoryError,
     SnippetNotFoundError,
 )
@@ -128,6 +135,21 @@ def test_delete_removes_from_list(repo):
     remaining = repo.list()
     assert len(remaining) == 1
     assert remaining[0].title == "second"
+
+
+def test_delete_raises_error_on_multiple_results(repo, mocker):
+    """Test delete raises error when multiple snippets found"""
+
+    mock_session = mocker.patch("snipster.database_manager.Session")
+
+    mock_result = mocker.Mock()
+    mock_result.one.side_effect = MultipleResultsFound(
+        "Multiple rows were found for one()"
+    )
+    mock_session.return_value.__enter__.return_value.exec.return_value = mock_result
+
+    with pytest.raises(MultipleSnippetsFoundError, match="Multiple snippets found"):
+        repo.delete(1)
 
 
 def test_id_persistence_after_operations(repo):
@@ -344,10 +366,240 @@ def test_duplicate_tags(repo, snippet_factory):
     assert snippet.tags == "tag1, tag2"
 
 
+def test_create_gist_success(repo, mocker):
+    """Test successful gist creation"""
+    mock_get_gist = mocker.patch.object(repo, "get_gist", return_value=None)
+
+    mock_config = mocker.patch("snipster.repositories.sql_model_repository.config")
+    mock_config.side_effect = lambda key, default=None: {
+        "GH_TOKEN": "test_token_123",
+        "GIST_URL": "https://api.github.com/gists",
+    }.get(key, default)
+
+    mock_response = mocker.Mock()
+    mock_response.json.return_value = {
+        "html_url": "https://gist.github.com/user/abc123"
+    }
+    mock_response.raise_for_status = mocker.Mock()
+
+    mock_post = mocker.patch("snipster.repositories.sql_model_repository.httpx.post")
+    mock_post.return_value = mock_response
+
+    mock_add_gist = mocker.patch.object(repo, "add_gist")
+
+    gist_url = repo.create_gist(
+        snippet_id=1,
+        code="print('hello')",
+        title="Test Snippet",
+        language="Python",
+        is_public=True,
+    )
+
+    mock_get_gist.assert_called_once_with(1)
+    mock_post.assert_called_once()
+    mock_add_gist.assert_called_once_with(
+        1, "https://gist.github.com/user/abc123", True
+    )
+
+    assert gist_url == "https://gist.github.com/user/abc123"
+
+
+def test_create_gist_fails_with_gist_exists(repo, mocker):
+    """Test create_gist raises error when gist already exists for snippet"""
+
+    existing_gist = mocker.Mock()
+    existing_gist.gist_url = "https://gist.github.com/existing/test"
+    mock_get_gist = mocker.patch.object(repo, "get_gist", return_value=existing_gist)
+
+    with pytest.raises(DuplicateGistError):
+        repo.create_gist(1, "print('test')", "Test", language="Python")
+
+    mock_get_gist.assert_called_once_with(1)
+
+
+def test_create_gist_github_api_failure(repo, mocker):
+    """Test create_gist handles GitHub API errors"""
+    mocker.patch.object(repo, "get_gist", return_value=None)
+
+    mock_config = mocker.patch("snipster.repositories.sql_model_repository.config")
+    mock_config.side_effect = lambda key, default=None: {
+        "GH_TOKEN": "test_token",
+        "GIST_URL": "https://api.github.com/gists",
+    }.get(key, default)
+
+    mock_post = mocker.patch("snipster.repositories.sql_model_repository.httpx.post")
+    mock_post.side_effect = httpx.HTTPError("API rate limit exceeded")
+
+    with pytest.raises(RepositoryError, match="Failed to create gist"):
+        repo.create_gist(1, "test", "Test", language="Python")
+
+
+def test_get_gist(repo, snippet_factory, mocker):
+    """Test fetching gist"""
+
+    mocker.patch.object(repo, "verify_gist_exists", return_value=True)
+
+    snippet = snippet_factory()
+
+    repo.add_gist(snippet.id, "https://api.github.com/gists/test", is_public=True)
+
+    gist = repo.get_gist(snippet.id)
+
+    assert gist.gist_url == "https://api.github.com/gists/test"
+    assert gist.gist_id == "test"
+
+
+def test_get_gist_does_not_exist(repo, snippet_factory):
+    """Test non-existent gist"""
+
+    snippet_factory()
+    gist = repo.get_gist(1)
+
+    assert gist is None
+
+
+def test_get_gist_fails_when_snippet_not_found(repo):
+    """Test get_gist raises error when snippet doesn't exist"""
+
+    with pytest.raises(SnippetNotFoundError):
+        repo.get_gist(999)
+
+
+def test_get_gist_missing_from_github(repo, mocker, snippet_factory):
+    """Test get_gist that exists in the database but is removed from GitHub"""
+
+    mock_logger = mocker.patch("snipster.repositories.sql_model_repository.logger")
+    mocker.patch.object(repo, "verify_gist_exists", return_value=False)
+
+    snippet = snippet_factory()
+
+    repo.add_gist(snippet.id, "https://api.github.com/gists/test", is_public=True)
+    gist = repo.get_gist(snippet.id)
+
+    mock_logger.warning.assert_called_once()
+    assert gist is None
+
+
+def test_verify_gist_exists(repo, mocker, snippet_factory):
+    """Test existence of gist on GitHub"""
+
+    mock_config = mocker.patch("snipster.repositories.sql_model_repository.config")
+    mock_config.return_value = "test_config_123"
+
+    mock_response = mocker.Mock()
+    mock_response.status_code = 200
+
+    mock_get = mocker.patch("snipster.repositories.sql_model_repository.httpx.get")
+    mock_get.return_value = mock_response
+
+    result = repo.verify_gist_exists("gist_id")
+
+    assert result is True
+    mock_get.assert_called_once_with(
+        "https://api.github.com/gists/gist_id",
+        headers={"Authorization": "token test_config_123"},
+    )
+
+
+def test_verify_gist_exists_returns_false_when_gist_not_found(repo, mocker):
+    """Test verify_gist_exists returns False when gist deleted on GitHub"""
+
+    mock_config = mocker.patch("snipster.repositories.sql_model_repository.config")
+    mock_config.return_value = "test_token_123"
+
+    mock_response = mocker.Mock()
+    mock_response.status_code = 404
+
+    mock_get = mocker.patch("snipster.repositories.sql_model_repository.httpx.get")
+    mock_get.return_value = mock_response
+
+    result = repo.verify_gist_exists("deleted_gist")
+
+    assert result is False
+
+
+def test_verify_gist_exists_returns_false_on_http_error(repo, mocker):
+    """Test verify_gist_exists returns False when HTTP error occurs"""
+
+    mock_config = mocker.patch("snipster.repositories.sql_model_repository.config")
+    mock_config.return_value = "test_token"
+
+    mock_get = mocker.patch("snipster.repositories.sql_model_repository.httpx.get")
+    mock_get.side_effect = httpx.HTTPError("Connection error")
+
+    result = repo.verify_gist_exists("test")
+
+    assert result is False
+
+
+def test_add_gist_fails_when_snippet_not_found(repo):
+    """Test add_gist raises error when snippet doesn't exist"""
+
+    with pytest.raises(RepositoryError):
+        repo.add_gist(1, "https://api.github.com/gists/test", is_public=True)
+
+
+def test_add_gist_fails_with_unique_constraint_error(mocker):
+    """Test add_gist fails due to unique constraint error"""
+
+    repo = SQLModelRepository(db_url="sqlite:///:memory:")
+    repo.add(Snippet(title="test", code="test"))
+    snippet = repo.get(1)
+
+    mock_logger = mocker.patch("snipster.repositories.sql_model_repository.logger")
+    mock_session = mocker.patch("snipster.database_manager.Session")
+
+    orig_error = Exception("UNIQUE constraint failed: gist.snippet_id")
+    mock_session.return_value.__enter__.return_value.commit.side_effect = (
+        IntegrityError(
+            statement="INSERT INTO gist",
+            params={},
+            orig=orig_error,
+        )
+    )
+
+    with pytest.raises(DuplicateGistError):
+        for _ in range(2):
+            repo.add_gist(
+                snippet.id, "https://api.github.com/gists/test", is_public=True
+            )
+
+    mock_logger.warning.assert_called_once()
+    repo.db_manager.engine.dispose()
+
+
+def test_add_gist_fails_with_operational_error(mocker):
+    """Test add_gist fails due to Operational error"""
+
+    repo = SQLModelRepository(db_url="sqlite:///:memory:")
+    repo.add(Snippet(title="test", code="test"))
+    snippet = repo.get(1)
+
+    mock_session = mocker.patch("snipster.database_manager.Session")
+
+    mock_session.return_value.__enter__.return_value.commit.side_effect = (
+        OperationalError(
+            "Mock DB error",
+            None,
+            None,
+        )
+    )
+
+    with pytest.raises(RepositoryError):
+        repo.add_gist(snippet.id, "https://api.github.com/gists/test", is_public=True)
+
+    repo.db_manager.engine.dispose()
+
+
 @pytest.mark.parametrize(
     "error_scenarios",
     [
         "add",
+        "list",
+        "get",
+        "delete",
+        "search",
+        "add_gist",
     ],
 )
 def test_sql_repo_operational_errors_logged(repo, mocker, error_scenarios):
@@ -360,5 +612,77 @@ def test_sql_repo_operational_errors_logged(repo, mocker, error_scenarios):
         mock_session.return_value.__enter__.return_value.commit.side_effect = (
             OperationalError("Mock DB error", None, None)
         )
+        with pytest.raises(DatabaseConnectionError):
+            repo.add(snippet1)
+    elif error_scenarios == "list":
+        mock_session.return_value.__enter__.return_value.exec.side_effect = (
+            OperationalError("Mock DB error", None, None)
+        )
+        with pytest.raises(DatabaseConnectionError):
+            repo.list()
+    elif error_scenarios == "get":
+        mock_session.return_value.__enter__.return_value.get.side_effect = (
+            OperationalError("Mock DB error", None, None)
+        )
+        with pytest.raises(DatabaseConnectionError):
+            repo.get(1)
+    elif error_scenarios == "delete":
+        mock_session.return_value.__enter__.return_value.commit.side_effect = (
+            OperationalError("Mock DB error", None, None)
+        )
+        with pytest.raises(DatabaseConnectionError):
+            repo.delete(1)
+    elif error_scenarios == "search":
+        mock_session.return_value.__enter__.return_value.exec.side_effect = (
+            OperationalError("Mock DB error", None, None)
+        )
+        with pytest.raises(DatabaseConnectionError):
+            repo.search("test")
+
+
+@pytest.mark.parametrize(
+    "error_scenarios",
+    [
+        "add",
+        "list",
+        "get",
+        "delete",
+        "search",
+    ],
+)
+def test_sql_repo_sqlalchemy_errors_logged(repo, mocker, error_scenarios):
+    """Test that all sql repo db operations log SQLAlchemyError properly"""
+    mock_session = mocker.patch("snipster.database_manager.Session")
+
+    snippet1 = Snippet(title="first", code="code1")
+
+    if error_scenarios == "add":
+        mock_session.return_value.__enter__.return_value.commit.side_effect = (
+            SQLAlchemyError("Mock DB error", None, None)
+        )
         with pytest.raises(RepositoryError):
             repo.add(snippet1)
+    elif error_scenarios == "list":
+        mock_session.return_value.__enter__.return_value.exec.side_effect = (
+            SQLAlchemyError("Mock DB error", None, None)
+        )
+        with pytest.raises(RepositoryError):
+            repo.list()
+    elif error_scenarios == "get":
+        mock_session.return_value.__enter__.return_value.get.side_effect = (
+            SQLAlchemyError("Mock DB error", None, None)
+        )
+        with pytest.raises(RepositoryError):
+            repo.get(1)
+    elif error_scenarios == "delete":
+        mock_session.return_value.__enter__.return_value.commit.side_effect = (
+            SQLAlchemyError("Mock DB error", None, None)
+        )
+        with pytest.raises(RepositoryError):
+            repo.delete(1)
+    elif error_scenarios == "search":
+        mock_session.return_value.__enter__.return_value.exec.side_effect = (
+            SQLAlchemyError("Mock DB error", None, None)
+        )
+        with pytest.raises(RepositoryError):
+            repo.search("test")
