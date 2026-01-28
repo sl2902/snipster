@@ -2,17 +2,31 @@
 
 from typing import List
 
+import httpx
+from decouple import config
 from loguru import logger
+from sqlalchemy.exc import (
+    IntegrityError,
+    MultipleResultsFound,
+    NoResultFound,
+    OperationalError,
+    SQLAlchemyError,
+)
 
 from snipster.database_manager import DatabaseManager
 from snipster.exceptions import (
+    DatabaseConnectionError,
+    DuplicateGistError,
     DuplicateSnippetError,
+    MultipleSnippetsFoundError,
     RepositoryError,
     SnippetNotFoundError,
 )
-from snipster.models import Snippet
+from snipster.models import Gist, Snippet
 from snipster.repositories.repository import SnippetRepository
 from snipster.types import Language
+
+GIST_BASE_URL = config("GIST_URL")
 
 
 class SQLModelRepository(SnippetRepository):
@@ -25,29 +39,103 @@ class SQLModelRepository(SnippetRepository):
     def add(self, snippet: Snippet) -> None:
         try:
             self.db_manager.insert_record(Snippet, snippet)
-        except DuplicateSnippetError:
-            logger.warning(f"Duplicate record found: {snippet}")
-            raise
-        except RepositoryError:
-            logger.warning(f"Failed to add snippet: {snippet}")
-            raise
+        except IntegrityError as err:
+            logger.error(f"Duplicate record found: {snippet}")
+            raise DuplicateSnippetError(f"Duplicate record found: {snippet}") from err
+        except OperationalError as err:
+            logger.error(f"Database connection error while adding snippet: {snippet}")
+            raise DatabaseConnectionError(
+                f"Database connection error while adding snippet: {snippet}"
+            ) from err
+        except SQLAlchemyError as err:
+            logger.error(f"Database error occurred while adding snippet: {snippet}")
+            raise RepositoryError(
+                f"Database error occurred while adding snippet: {snippet}"
+            ) from err
         logger.info("Added a single record successfully")
 
     def list(self) -> List[Snippet]:
-        return list(self.db_manager.select_all(Snippet))
+        try:
+            return list(self.db_manager.select_all(Snippet))
+        except OperationalError as err:
+            logger.error("Database connection error while listing all snippets")
+            raise DatabaseConnectionError(
+                "Database connection error while listing all snippets"
+            ) from err
+        except SQLAlchemyError as err:
+            logger.error("Database error occurred while listing all snippets")
+            raise RepositoryError(
+                "Database error occurred while listing all snippets"
+            ) from err
 
     def get(self, snippet_id: int) -> Snippet | None:
-        return self.db_manager.select_by_id(Snippet, snippet_id)
+        try:
+            return self.db_manager.select_by_id(Snippet, snippet_id)
+        except OperationalError as err:
+            logger.error(
+                f"Database connection error while fetching snippet: {snippet_id}"
+            )
+            raise DatabaseConnectionError(
+                f"Database connection error while fetching snippet: {snippet_id}"
+            ) from err
+        except SQLAlchemyError as err:
+            logger.error(
+                f"Database error occurred while fetching snippet: {snippet_id}"
+            )
+            raise RepositoryError(
+                f"Database error occurred while fetching snippet: {snippet_id}"
+            ) from err
 
     def delete(self, snippet_id: int) -> None:
-        self.db_manager.delete_record(Snippet, snippet_id)
-        logger.info(f"Record id {snippet_id} deleted successfully")
+        try:
+            self.db_manager.delete_record(Snippet, snippet_id)
+            logger.info(f"Record id {snippet_id} deleted successfully")
+        except NoResultFound as err:
+            logger.warning(f"Snippet with id {snippet_id} not found")
+            raise SnippetNotFoundError(
+                f"Snippet with id {snippet_id} not found"
+            ) from err
+        except MultipleResultsFound as err:
+            logger.error(f"Multiple snippets found for snippet: {snippet_id}")
+            raise MultipleSnippetsFoundError(
+                f"Multiple snippets found for snippet: {snippet_id}"
+            ) from err
+        except OperationalError as err:
+            logger.error(
+                f"Database connection error while deleting snippet: {snippet_id}"
+            )
+            raise DatabaseConnectionError(
+                f"Database connection error while deleting snippet: {snippet_id}"
+            ) from err
+        except SQLAlchemyError as err:
+            logger.error(
+                f"Database error occurred while deleting snippet: {snippet_id}"
+            )
+            raise RepositoryError(
+                f"Database error occurred while deleting snippet: {snippet_id}"
+            ) from err
 
     def search(self, term: str, *, language: str | None = None) -> List[Snippet]:
         cols_to_search = ["title", "code", "description"]
         all_snippets = {}
         for col in cols_to_search:
-            snippets = self.db_manager.select_with_filter(Snippet, col, term)
+            try:
+                snippets = self.db_manager.select_with_filter(Snippet, col, term)
+            except OperationalError as err:
+                logger.error(
+                    f"Database connection error while searching snippet term: {term}"
+                )
+                raise DatabaseConnectionError(
+                    f"Database connection error while searching snippet term: {term}"
+                ) from err
+            except SQLAlchemyError as err:
+                logger.error(
+                    f"Database error occurred while searching snippet term: {term}"
+                )
+                raise RepositoryError(
+                    f"Database error occurred while searching snippet term: {term}"
+                ) from err
+
             for snippet in snippets:
                 if snippet.id not in all_snippets:
                     all_snippets[snippet.id] = snippet
@@ -97,6 +185,98 @@ class SQLModelRepository(SnippetRepository):
 
         self.db_manager.update(Snippet, pk=snippet_id, col="tags", value=snippet.tags)
         logger.info(f"Successfully updated tags for snippet {snippet_id}")
+
+    def get_gist(self, snippet_id: int) -> Gist | None:
+        snippet = self.db_manager.select_by_id(Snippet, snippet_id)
+        if not snippet:
+            raise SnippetNotFoundError(f"Gist has no snippet with id: {snippet_id}")
+        gist = self.db_manager.select_by_id(Gist, snippet_id)
+
+        if not gist:
+            return None
+        if not self.verify_gist_exists(gist.gist_id):
+            self.db_manager.delete_record(Gist, gist.id)
+            logger.warning(
+                f"Gist {gist.gist_id} was deleted on GitHub, cleaned up locally"
+            )
+            return None
+        return gist
+
+    def verify_gist_exists(self, gist_id: str) -> bool:
+        try:
+            response = httpx.get(
+                f"{GIST_BASE_URL}/{gist_id}",
+                headers={"Authorization": f"token {config('GH_TOKEN')}"},
+            )
+            return response.status_code == 200
+        except httpx.HTTPError:
+            return False
+
+    def add_gist(self, snippet_id: int, gist_url: str, is_public: bool) -> None:
+        gist_id = gist_url.split("/")[-1]
+        gist = Gist(
+            snippet_id=snippet_id,
+            gist_id=gist_id,
+            gist_url=gist_url,
+            is_public=is_public,
+        )
+        try:
+            self.db_manager.insert_record(Gist, gist)
+        except IntegrityError as err:
+            if "UNIQUE constraint" in str(err):
+                logger.warning(f"Gist already exists for snippet {snippet_id}")
+                raise DuplicateGistError(
+                    f"Snippet {snippet_id} already has a gist"
+                ) from err
+            logger.error(f"Failed to add gist for snippet: {snippet_id}")
+            raise RepositoryError(
+                f"Failed to add gist for snippet: {snippet_id}"
+            ) from err
+        except OperationalError as err:
+            logger.error(f"Failed to add gist: {gist} for snippet: {snippet_id}: {err}")
+            raise RepositoryError(
+                f"Failed to add gist: {gist} for snippet: {snippet_id}"
+            ) from err
+
+        logger.info(f"Added gist successfully for snippet: {snippet_id}")
+
+    def create_gist(
+        self,
+        snippet_id: int,
+        code: str,
+        title: str,
+        language: str,
+        *,
+        is_public: bool = True,
+    ) -> str:
+        ext = Language.extension_for(language)
+
+        gist = self.get_gist(snippet_id)
+        if gist:
+            logger.warning(f"Gist already exists for snippet {snippet_id}")
+            raise DuplicateGistError
+
+        logger.info(f"Create gist for snippet '{snippet_id}'")
+        payload = {
+            "description": title,
+            "public": is_public,
+            "files": {f"{title.replace(" ", "_").lower()}.{ext}": {"content": code}},
+        }
+        headers = {"Authorization": f"token {config('GH_TOKEN')}"}
+
+        try:
+            response = httpx.post(GIST_BASE_URL, json=payload, headers=headers)
+            response.raise_for_status()
+        except httpx.HTTPError as err:
+            logger.error(f"Failed to create gist: {err}")
+            raise RepositoryError(f"Failed to create gist: {err}") from err
+
+        gist_url = response.json()["html_url"]
+
+        logger.info("Store gist for snippet '{snippet_id}'")
+        self.add_gist(snippet_id, gist_url, is_public)
+
+        return gist_url
 
 
 if __name__ == "__main__":  # pragma: no cover
