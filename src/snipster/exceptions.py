@@ -45,3 +45,9 @@ class DuplicateGistError(SnipsterError):
     """Raised when attempting to create a gist for a snippet that already has one"""
 
     pass
+
+
+class GistNotFoundError(SnipsterError):
+    """Raised when gist associated to a snippet with given ID doesn't exist"""
+
+    pass
