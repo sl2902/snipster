@@ -18,6 +18,7 @@ from snipster.exceptions import (
     DatabaseConnectionError,
     DuplicateGistError,
     DuplicateSnippetError,
+    GistNotFoundError,
     MultipleSnippetsFoundError,
     RepositoryError,
     SnippetNotFoundError,
@@ -89,11 +90,11 @@ class SQLModelRepository(SnippetRepository):
     def delete(self, snippet_id: int) -> None:
         try:
             self.db_manager.delete_record(Snippet, snippet_id)
-            logger.info(f"Record id {snippet_id} deleted successfully")
+            logger.info(f"Record id '{snippet_id}' deleted successfully")
         except NoResultFound as err:
             logger.warning(f"Snippet with id {snippet_id} not found")
             raise SnippetNotFoundError(
-                f"Snippet with id {snippet_id} not found"
+                f"Snippet with id '{snippet_id}' not found"
             ) from err
         except MultipleResultsFound as err:
             logger.error(f"Multiple snippets found for snippet: {snippet_id}")
@@ -187,15 +188,25 @@ class SQLModelRepository(SnippetRepository):
         logger.info(f"Successfully updated tags for snippet {snippet_id}")
 
     def get_gist(self, snippet_id: int) -> Gist | None:
-        snippet = self.db_manager.select_by_id(Snippet, snippet_id)
+        snippet = self.get(snippet_id)
         if not snippet:
-            raise SnippetNotFoundError(f"Gist has no snippet with id: {snippet_id}")
-        gist = self.db_manager.select_by_id(Gist, snippet_id)
-
-        if not gist:
             return None
-        if not self.verify_gist_exists(gist.gist_id):
-            self.db_manager.delete_record(Gist, gist.id)
+
+        try:
+            gist = self.db_manager.select_by_id(Gist, snippet_id)
+        except OperationalError as err:
+            logger.error("Database connection error while fetching gist")
+            raise DatabaseConnectionError(
+                "Database connection error  while fetching gist"
+            ) from err
+        except SQLAlchemyError as err:
+            logger.error("Database error occurred  while fetching gist")
+            raise RepositoryError(
+                "Database error occurred  while fetching gist"
+            ) from err
+
+        if gist and not self.verify_gist_exists(gist.gist_id):
+            self.db_manager.delete_record(Gist, snippet_id)
             logger.warning(
                 f"Gist {gist.gist_id} was deleted on GitHub, cleaned up locally"
             )
@@ -277,6 +288,61 @@ class SQLModelRepository(SnippetRepository):
         self.add_gist(snippet_id, gist_url, is_public)
 
         return gist_url
+
+    def _fetch_gist_unchecked(self, snippet_id: int) -> Gist | None:
+        """Fetch gist without GitHub verification (may be stale)"""
+        try:
+            return self.db_manager.select_by_id(Gist, snippet_id)
+        except SQLAlchemyError as e:
+            raise RepositoryError("Failed to fetch gist") from e
+
+    def delete_gist(
+        self,
+        snippet_id: int,
+    ) -> None:
+        gist = self._fetch_gist_unchecked(snippet_id)
+
+        if not gist:
+            raise GistNotFoundError(f"Gist not found for snippet '{snippet_id}'")
+
+        headers = {"Authorization": f"token {config('GH_TOKEN')}"}
+
+        try:
+            response = httpx.delete(f"{GIST_BASE_URL}/{gist.gist_id}", headers=headers)
+            response.raise_for_status()
+            logger.info("Deleted gist from GitHub")
+        except httpx.HTTPStatusError as err:
+            if err.response.status_code == 404:
+                logger.warning("Gist already deleted on GitHub, cleaning up locally")
+            else:
+                raise RepositoryError(f"GitHub deletion failed: {err}") from err
+        except httpx.HTTPError as err:
+            logger.error(f"Cannot connect to GitHub: {err}")
+            raise RepositoryError(f"Cannot connect to GitHub: {err}") from err
+
+        try:
+            self.db_manager.delete_record(Gist, snippet_id)
+        except MultipleResultsFound as err:
+            logger.error(f"Multiple gists found for snippet: {snippet_id}")
+            raise MultipleSnippetsFoundError(
+                f"Multiple gists found for snippet: {snippet_id}"
+            ) from err
+        except OperationalError as err:
+            logger.error(
+                f"Database connection error while deleting gist with snippet: {snippet_id}"
+            )
+            raise DatabaseConnectionError(
+                f"Database connection error while deleting gist with snippet: {snippet_id}"
+            ) from err
+        except SQLAlchemyError as err:
+            logger.error(
+                f"Database error occurred while deleting gist with snippet: {snippet_id}"
+            )
+            raise RepositoryError(
+                f"Database error occurred while deleting gist with snippet: {snippet_id}"
+            ) from err
+
+        logger.info(f"Deleted gist for snippet '{snippet_id}'")
 
 
 if __name__ == "__main__":  # pragma: no cover
