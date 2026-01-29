@@ -5,7 +5,11 @@ from typer.testing import CliRunner
 
 from snipster import Language, Snippet
 from snipster.cli import app
-from snipster.exceptions import RepositoryError, SnippetNotFoundError
+from snipster.exceptions import (
+    DuplicateGistError,
+    RepositoryError,
+    SnippetNotFoundError,
+)
 
 runner = CliRunner()
 
@@ -282,3 +286,80 @@ def test_tags_not_found(mock_repo):
 
     assert result.exit_code == 1
     assert "snippet '999' not found" in strip_ansi(result.stdout.lower())
+
+
+def test_add_gist(mock_repo):
+    """Test adding a gist"""
+    sample_snippet = Snippet(
+        title="Test Gist",
+        code="print('Test Gist')",
+    )
+
+    mock_repo.get.return_value = sample_snippet
+    mock_repo.create_gist.return_value = "https://gist.github.com/test/abc123"
+    result = runner.invoke(
+        app,
+        [
+            "gist",
+            "--snippet-id",
+            1,
+            "--is-public",
+        ],
+    )
+
+    assert result.exit_code == 0
+    mock_repo.get.assert_called_once_with(1)
+    mock_repo.create_gist.assert_called_once_with(
+        1,
+        sample_snippet.code,
+        sample_snippet.title,
+        sample_snippet.language,
+        is_public=True,
+    )
+    assert "Gist added" in strip_ansi(result.stdout)
+
+
+def test_add_gist_command_fails_when_duplicate_gist_exists(mock_repo):
+    """Test gist command handles duplicate gist error"""
+
+    sample_snippet = Snippet(
+        title="Test Gist",
+        code="print('Test Gist')",
+    )
+
+    mock_repo.get.return_value = sample_snippet
+    mock_repo.create_gist.side_effect = DuplicateGistError("Duplicate gist")
+
+    result = runner.invoke(
+        app,
+        [
+            "gist",
+            "--snippet-id",
+            1,
+            "--is-public",
+        ],
+    )
+
+    mock_repo.get.assert_called_once_with(1)
+    assert result.exit_code == 1
+    assert "Duplicate gist found" in result.stdout
+
+
+def test_add_gist_command_fails_when_snippet_not_found(mock_repo):
+    """Test gist command handles snippet not found"""
+
+    mock_repo.get.return_value = None
+
+    result = runner.invoke(
+        app,
+        [
+            "gist",
+            "--snippet-id",
+            1,
+            "--is-public",
+        ],
+    )
+
+    assert result.exit_code == 1
+    mock_repo.create_gist.assert_not_called()
+    assert "No snippet found" in strip_ansi(result.stdout)
