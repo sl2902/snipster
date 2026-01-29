@@ -299,7 +299,7 @@ class DatabaseManager:
             except MultipleResultsFound as err:
                 session.rollback()
                 logger.error(
-                    f"Multiple results found for id {pk} in. model {model.__name__}: {err}"
+                    f"Multiple results found for id {pk} in model {model.__name__}: {err}"
                 )
                 raise
             except OperationalError as err:
