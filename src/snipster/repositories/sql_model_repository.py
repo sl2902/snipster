@@ -1,6 +1,7 @@
 """SQLModel backend repository"""
 
-from typing import List
+from datetime import datetime, timezone
+from typing import Any, List
 
 import httpx
 from decouple import config
@@ -25,7 +26,7 @@ from snipster.exceptions import (
 )
 from snipster.models import Gist, Snippet
 from snipster.repositories.repository import SnippetRepository
-from snipster.types import Language
+from snipster.types import GistStatus, Language
 
 GIST_BASE_URL = config("GIST_URL")
 
@@ -163,8 +164,18 @@ class SQLModelRepository(SnippetRepository):
         else:
             logger.error(f"Snippet with id {snippet_id} not found")
             raise SnippetNotFoundError(f"Snippet with id {snippet_id} not found")
-
-        self.db_manager.update(Snippet, snippet_id, "favorite", snippet.favorite)
+        try:
+            self.db_manager.update(Snippet, snippet_id, "favorite", snippet.favorite)
+        except OperationalError as err:
+            logger.error("Database connection error while toggling favourite tag")
+            raise DatabaseConnectionError(
+                "Database connection error while toggling favourite tag"
+            ) from err
+        except SQLAlchemyError as err:
+            logger.error("Database error occurred while toggling favourite tag")
+            raise RepositoryError(
+                "Database error occurred while toggling favourite tag"
+            ) from err
         if snippet.favorite:
             logger.info(f"Successfully favourited snippet id {snippet_id}")
         else:
@@ -183,37 +194,48 @@ class SQLModelRepository(SnippetRepository):
         else:
             logger.error(f"Snippet id {snippet_id} not found")
             raise SnippetNotFoundError(f"Snippet id {snippet_id} not found")
-
-        self.db_manager.update(Snippet, pk=snippet_id, col="tags", value=snippet.tags)
-        logger.info(f"Successfully updated tags for snippet {snippet_id}")
-
-    def get_gist(self, snippet_id: int) -> Gist | None:
-        snippet = self.get(snippet_id)
-        if not snippet:
-            return None
-
         try:
-            gist = self.db_manager.select_by_id(Gist, snippet_id)
+            self.db_manager.update(
+                Snippet, pk=snippet_id, col="tags", value=snippet.tags
+            )
         except OperationalError as err:
-            logger.error("Database connection error while fetching gist")
+            logger.error("Database connection error while updating tags")
             raise DatabaseConnectionError(
-                "Database connection error  while fetching gist"
+                "Database connection error while updating tags"
             ) from err
         except SQLAlchemyError as err:
-            logger.error("Database error occurred  while fetching gist")
+            logger.error("Database error occurred while updating tags")
             raise RepositoryError(
-                "Database error occurred  while fetching gist"
+                "Database error occurred while updating tags"
             ) from err
+        logger.info(f"Successfully updated tags for snippet {snippet_id}")
 
-        if gist and not self.verify_gist_exists(gist.gist_id):
-            self.db_manager.delete_record(Gist, snippet_id)
-            logger.warning(
-                f"Gist {gist.gist_id} was deleted on GitHub, cleaned up locally"
-            )
-            return None
-        return gist
+    def _fetch_gist_unchecked(self, snippet_id: int) -> Gist | None:
+        """Fetch gist without GitHub verification (may be stale)"""
+        try:
+            return self.db_manager.select_by_id(Gist, snippet_id)
+        except SQLAlchemyError as err:
+            raise RepositoryError("Failed to fetch gist") from err
 
-    def verify_gist_exists(self, gist_id: str) -> bool:
+    def _delete_gist_from_github(self, gist_id: str) -> None:
+        """Delete gist from Github"""
+        headers = {"Authorization": f"token {config('GH_TOKEN')}"}
+
+        try:
+            response = httpx.delete(f"{GIST_BASE_URL}/{gist_id}", headers=headers)
+            response.raise_for_status()
+            logger.info("Deleted gist from GitHub")
+        except httpx.HTTPStatusError as err:
+            if err.response.status_code == 404:
+                logger.warning("Gist already deleted on GitHub, cleaning up locally")
+            else:
+                raise RepositoryError(f"GitHub deletion failed: {err}") from err
+        except httpx.HTTPError as err:
+            logger.error(f"Cannot connect to GitHub: {err}")
+            raise RepositoryError(f"Cannot connect to GitHub: {err}") from err
+
+    def _verify_gist_exists(self, gist_id: str) -> bool:
+        """Verify whether gist exists on GitHub or not"""
         try:
             response = httpx.get(
                 f"{GIST_BASE_URL}/{gist_id}",
@@ -223,6 +245,72 @@ class SQLModelRepository(SnippetRepository):
         except httpx.HTTPError:
             return False
 
+    def _post_gist_on_github(
+        self, payload: dict[str, Any], headers: dict[str, Any]
+    ) -> str:
+        """Send POST request to create gist on GitHub"""
+        try:
+            response = httpx.post(GIST_BASE_URL, json=payload, headers=headers)
+            response.raise_for_status()
+        except httpx.HTTPError as err:
+            logger.error(f"Failed to create gist: {err}")
+            raise RepositoryError(f"Failed to create gist: {err}") from err
+        return response.json()["html_url"]
+
+    def _reconcile_gists(self, **kwargs) -> dict[str, int]:
+        """Reconcile gists between database table and GitHub for single gist or multiple gists"""
+        results = {
+            "verified": 0,
+            "deleted": 0,
+            "errors": 0,
+        }
+        if kwargs:
+            all_gists = [self.db_manager.select_by_id(Gist, kwargs["snippet_id"])]
+        else:
+            all_gists = self.db_manager.select_all(Gist)
+
+        for gist in all_gists:
+            # need this check to ensure when user might enter invalid gist_id
+            if gist:
+                try:
+                    if self._verify_gist_exists(gist.gist_id):
+                        results["verified"] += 1
+                        gist.status = GistStatus.ACTIVE
+                    else:
+                        results["deleted"] += 1
+                        gist.status = GistStatus.DELETED_ON_GITHUB
+                    gist.verified_at = datetime.now(timezone.utc)
+                    self.db_manager.update(
+                        Gist, gist.snippet_id, col="status", value=gist.status
+                    )
+                    self.db_manager.update(
+                        Gist, gist.snippet_id, col="verified_at", value=gist.verified_at
+                    )
+
+                except (httpx.HTTPError, OperationalError, SQLAlchemyError) as err:
+                    logger.error(f"Failed to reconcile gist {gist.gist_id}: {err}")
+                    results["errors"] += 1
+
+    def get_gist(self, snippet_id: int) -> Gist | None:
+        snippet = self.get(snippet_id)
+        if not snippet:
+            return None
+
+        try:
+            self.db_manager.select_by_id(Gist, snippet_id)
+            self._reconcile_gists(**{"snippet_id": snippet_id})
+            return self.db_manager.select_by_id(Gist, snippet_id)
+        except OperationalError as err:
+            logger.error("Database connection error while fetching gist")
+            raise DatabaseConnectionError(
+                "Database connection error while fetching gist"
+            ) from err
+        except SQLAlchemyError as err:
+            logger.error("Database error occurred while fetching gist")
+            raise RepositoryError(
+                "Database error occurred while fetching gist"
+            ) from err
+
     def add_gist(self, snippet_id: int, gist_url: str, is_public: bool) -> None:
         gist_id = gist_url.split("/")[-1]
         gist = Gist(
@@ -230,6 +318,8 @@ class SQLModelRepository(SnippetRepository):
             gist_id=gist_id,
             gist_url=gist_url,
             is_public=is_public,
+            status=GistStatus.ACTIVE,
+            verified_at=datetime.now(timezone.utc),
         )
         try:
             self.db_manager.insert_record(Gist, gist)
@@ -248,6 +338,11 @@ class SQLModelRepository(SnippetRepository):
             raise RepositoryError(
                 f"Failed to add gist: {gist} for snippet: {snippet_id}"
             ) from err
+        except SQLAlchemyError as err:
+            logger.error("Database error occurred while fetching gist")
+            raise RepositoryError(
+                "Database error occurred while fetching gist"
+            ) from err
 
         logger.info(f"Added gist successfully for snippet: {snippet_id}")
 
@@ -264,8 +359,8 @@ class SQLModelRepository(SnippetRepository):
 
         gist = self.get_gist(snippet_id)
         if gist:
-            logger.warning(f"Gist already exists for snippet {snippet_id}")
-            raise DuplicateGistError
+            logger.warning(f"Gist already exists for snippet '{snippet_id}'")
+            raise DuplicateGistError(f"Gist already exists for snippet '{snippet_id}'")
 
         logger.info(f"Create gist for snippet '{snippet_id}'")
         payload = {
@@ -275,26 +370,12 @@ class SQLModelRepository(SnippetRepository):
         }
         headers = {"Authorization": f"token {config('GH_TOKEN')}"}
 
-        try:
-            response = httpx.post(GIST_BASE_URL, json=payload, headers=headers)
-            response.raise_for_status()
-        except httpx.HTTPError as err:
-            logger.error(f"Failed to create gist: {err}")
-            raise RepositoryError(f"Failed to create gist: {err}") from err
+        gist_url = self._post_gist_on_github(payload, headers)
 
-        gist_url = response.json()["html_url"]
-
-        logger.info("Store gist for snippet '{snippet_id}'")
+        logger.info("Store gist for snippet '{snippet_id}' in database")
         self.add_gist(snippet_id, gist_url, is_public)
 
         return gist_url
-
-    def _fetch_gist_unchecked(self, snippet_id: int) -> Gist | None:
-        """Fetch gist without GitHub verification (may be stale)"""
-        try:
-            return self.db_manager.select_by_id(Gist, snippet_id)
-        except SQLAlchemyError as e:
-            raise RepositoryError("Failed to fetch gist") from e
 
     def delete_gist(
         self,
@@ -305,20 +386,7 @@ class SQLModelRepository(SnippetRepository):
         if not gist:
             raise GistNotFoundError(f"Gist not found for snippet '{snippet_id}'")
 
-        headers = {"Authorization": f"token {config('GH_TOKEN')}"}
-
-        try:
-            response = httpx.delete(f"{GIST_BASE_URL}/{gist.gist_id}", headers=headers)
-            response.raise_for_status()
-            logger.info("Deleted gist from GitHub")
-        except httpx.HTTPStatusError as err:
-            if err.response.status_code == 404:
-                logger.warning("Gist already deleted on GitHub, cleaning up locally")
-            else:
-                raise RepositoryError(f"GitHub deletion failed: {err}") from err
-        except httpx.HTTPError as err:
-            logger.error(f"Cannot connect to GitHub: {err}")
-            raise RepositoryError(f"Cannot connect to GitHub: {err}") from err
+        self._delete_gist_from_github(gist.gist_id)
 
         try:
             self.db_manager.delete_record(Gist, snippet_id)
@@ -343,6 +411,22 @@ class SQLModelRepository(SnippetRepository):
             ) from err
 
         logger.info(f"Deleted gist for snippet '{snippet_id}'")
+
+    def list_gist(self) -> List[Gist]:
+        try:
+            logger.info("Reconcile gists")
+            self._reconcile_gists()
+            return list(self.db_manager.select_all(Gist))
+        except OperationalError as err:
+            logger.error("Database connection error while listing all gists")
+            raise DatabaseConnectionError(
+                "Database connection error while listing all gists"
+            ) from err
+        except SQLAlchemyError as err:
+            logger.error("Database error occurred while listing all gists")
+            raise RepositoryError(
+                "Database error occurred while listing all gists"
+            ) from err
 
 
 if __name__ == "__main__":  # pragma: no cover
