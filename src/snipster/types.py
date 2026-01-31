@@ -26,3 +26,11 @@ class Language(str, Enum):
     def extension_for(cls, language: str) -> str:
         """Get extension from language string"""
         return cls(language).get_extension()
+
+
+class GistStatus(str, Enum):
+    """Supported status values for snippet gists"""
+
+    ACTIVE = "active"
+    DELETED_ON_GITHUB = "deleted_on_github"
+    UNKNOWN = "unknown"
