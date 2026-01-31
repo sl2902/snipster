@@ -7,7 +7,9 @@ from rich.console import Console
 from rich.table import Table
 
 from snipster.exceptions import (
+    DatabaseConnectionError,
     DuplicateGistError,
+    GistNotFoundError,
     RepositoryError,
     SnippetNotFoundError,
 )
@@ -31,6 +33,19 @@ def create_table_header(title: str | None = None) -> Table:
     table.add_column("Favorite", justify="center", style="red")
     table.add_column("Created", justify="right", style="green")
 
+    return table
+
+
+def create_gist_table_header(title: str | None = None) -> Table:
+    """Create Rich table header for gists"""
+    table = Table(title=title)
+    table.add_column("ID", justify="right", style="cyan", no_wrap=True)
+    table.add_column("SnippetID", justify="right", style="magenta", no_wrap=True)
+    table.add_column("URL", style="dim")
+    table.add_column("Public", style="blue")
+    table.add_column("Created", justify="right", style="green")
+    table.add_column("GistStatus", style="purple")
+    table.add_column("Verified", justify="right", style="green")
     return table
 
 
@@ -241,34 +256,134 @@ def tags(
 
 
 @app.command()
-def gist(
+def create_gist(
     snippet_id: int = typer.Option(..., prompt=True),
     is_public: bool = typer.Option(True, help="True to publish gist. Default is True"),
     ctx: typer.Context = None,
 ):
     """Create gist"""
     repo = ctx.obj
-
-    snippet = repo.get(snippet_id)
-    if snippet:
-        try:
-            repo.create_gist(
-                snippet_id,
-                snippet.code,
-                snippet.title,
-                snippet.language,
-                is_public=is_public,
-            )
-            console.print(
-                f":white_check_mark: [bold green]Gist added for snippet '{snippet_id}'[/bold green]"
-            )
-        except DuplicateGistError:
-            console.print(
-                f":cross_mark: [bold red]Duplicate gist found for snippet '{snippet_id}'[/bold red]"
-            )
+    try:
+        snippet = repo.get(snippet_id)
+        if not snippet:
+            console.print(f"\n[yellow]No snippet found for id '{snippet_id}'[/yellow]")
             raise typer.Exit(code=1)
-    else:
-        console.print(f"\n[yellow]No snippet found for id {snippet_id}[/yellow]")
+    except DatabaseConnectionError as err:
+        console.print(":cross_mark: [bold red]Database connection error[/bold red]")
+        if err.__cause__:
+            console.print(f"[bold red]{err.__cause__}[/bold red]")
+        raise typer.Exit(code=1)
+    except RepositoryError as err:
+        console.print(":cross_mark: [bold red]Repository error[/bold red]")
+        if err.__cause__:
+            console.print(f"[bold red]{err.__cause__}[/bold red]")
+        raise typer.Exit(code=1)
+
+    try:
+        repo.create_gist(
+            snippet_id,
+            snippet.code,
+            snippet.title,
+            snippet.language,
+            is_public=is_public,
+        )
+        console.print(
+            f":white_check_mark: [bold green]Gist added for snippet '{snippet_id}'[/bold green]"
+        )
+    except DuplicateGistError:
+        console.print(
+            f":cross_mark: [bold red]Duplicate gist found for snippet '{snippet_id}'[/bold red]"
+        )
+        raise typer.Exit(code=1)
+    except DatabaseConnectionError as err:
+        console.print(":cross_mark: [bold red]Database connection error[/bold red]")
+        if err.__cause__:
+            console.print(f"[bold red]{err.__cause__}[/bold red]")
+        raise typer.Exit(code=1)
+    except RepositoryError as err:
+        console.print(":cross_mark: [bold red]Repository error[/bold red]")
+        if err.__cause__:
+            console.print(f"[bold red]{err.__cause__}[/bold red]")
+        raise typer.Exit(code=1)
+
+
+@app.command()
+def delete_gist(
+    snippet_id: int = typer.Option(..., prompt=True),
+    ctx: typer.Context = None,
+):
+    """Delete gist"""
+    repo = ctx.obj
+    try:
+        repo.get(snippet_id)
+    except GistNotFoundError:
+        console.print(
+            f":cross_mark: [bold red]Gist not found for snippet '{snippet_id}'[/bold red]"
+        )
+        raise typer.Exit(code=1)
+    except DatabaseConnectionError as err:
+        console.print(":cross_mark: [bold red]Database connection error[/bold red]")
+        if err.__cause__:
+            console.print(f"[bold red]{err.__cause__}[/bold red]")
+        raise typer.Exit(code=1)
+    except RepositoryError as err:
+        console.print(":cross_mark: [bold red]Repository error[/bold red]")
+        if err.__cause__:
+            console.print(f"[bold red]{err.__cause__}[/bold red]")
+        raise typer.Exit(code=1)
+
+    try:
+        repo.delete_gist(
+            snippet_id,
+        )
+        console.print(
+            f":white_check_mark: [bold green]Gist deleted for snippet '{snippet_id}'[/bold green]"
+        )
+    except DatabaseConnectionError as err:
+        console.print(":cross_mark: [bold red]Database connection error[/bold red]")
+        if err.__cause__:
+            console.print(f"[bold red]{err.__cause__}[/bold red]")
+        raise typer.Exit(code=1)
+    except RepositoryError as err:
+        console.print(f":cross_mark: [bold red]Repository error: {err}[/bold red]")
+        if err.__cause__:
+            console.print(f"[bold red]{err.__cause__}[/bold red]")
+        raise typer.Exit(code=1)
+
+
+@app.command()
+def list_gist(
+    ctx: typer.Context = None,
+):
+    """List all gists"""
+    repo = ctx.obj
+    table = create_gist_table_header(title=":heavy_check_mark: List of gists")
+
+    try:
+        all_gists = repo.list_gist()
+        if all_gists:
+            for gist in all_gists:
+                table.add_row(
+                    str(gist.id),
+                    str(gist.snippet_id),
+                    gist.gist_url,
+                    str(gist.is_public),
+                    gist.created_at.strftime("%Y-%m-%d") if gist.created_at else "-",
+                    gist.status.value,
+                    gist.verified_at.strftime("%Y-%m-%d") if gist.verified_at else "-",
+                )
+        if not all_gists:
+            console.print("[yellow]No gists found[/yellow]")
+        console.print(table)
+    except DatabaseConnectionError as err:
+        console.print(":cross_mark: [bold red]Database connection error[/bold red]")
+        if err.__cause__:
+            console.print(f"[bold red]{err.__cause__}[/bold red]")
+        raise typer.Exit(code=1)
+    except RepositoryError as err:
+        console.print(f":cross_mark: [bold red]Repository error: {err}[/bold red]")
+        if err.__cause__:
+            console.print(f"[bold red]{err.__cause__}[/bold red]")
         raise typer.Exit(code=1)
 
 
