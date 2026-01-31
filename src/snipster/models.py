@@ -7,7 +7,7 @@ from pydantic import ConfigDict, field_validator
 from sqlmodel import Field, Relationship, SQLModel, UniqueConstraint
 
 from snipster.database_manager import DatabaseManager
-from snipster.types import Language
+from snipster.types import GistStatus, Language
 
 
 class SnippetBase(SQLModel):
@@ -95,6 +95,10 @@ class Gist(GistBase, table=True):
     id: int | None = Field(default=None, primary_key=True)
     is_public: bool = Field(
         default=True, description="Whether to make the Gist public or not"
+    )
+    status: GistStatus = Field(default=GistStatus.UNKNOWN, description="Gist status")
+    verified_at: datetime | None = Field(
+        default=None, description="Last verification time"
     )
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
