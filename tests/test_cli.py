@@ -3,13 +3,16 @@ import re
 import pytest
 from typer.testing import CliRunner
 
-from snipster import Language, Snippet
+from snipster import Gist, Language, Snippet
 from snipster.cli import app
 from snipster.exceptions import (
+    DatabaseConnectionError,
     DuplicateGistError,
+    GistNotFoundError,
     RepositoryError,
     SnippetNotFoundError,
 )
+from snipster.types import GistStatus
 
 runner = CliRunner()
 
@@ -130,6 +133,69 @@ def test_get_snippet_not_found(mock_repo):
     assert "No snippet found" in strip_ansi(result.stdout)
 
 
+def test_add_command_fails_with_database_connection_error(mock_repo):
+    """
+    Test add command that handles Database Connection Error; this is
+    called insider create_gist CLI
+    """
+
+    sample_snippet = Snippet(
+        title="Test Gist",
+        code="print('Test Gist')",
+    )
+    mock_repo.get.return_value = sample_snippet
+
+    orig_error = Exception("Database connection error")
+    db_error = DatabaseConnectionError("Database connection error")
+    db_error.__cause__ = orig_error
+    mock_repo.get.side_effect = db_error
+
+    result = runner.invoke(
+        app,
+        [
+            "create-gist",
+            "--snippet-id",
+            1,
+            "--is-public",
+        ],
+    )
+
+    assert result.exit_code == 1
+    mock_repo.get.assert_called_once()
+    assert "Database connection error" in strip_ansi(result.stdout)
+
+
+def test_add_command_fails_with_repository_error(mock_repo):
+    """
+    Test add command, which inserts the gist to handle Repository Error; this is
+    called inside create_gist CLI
+    """
+
+    sample_snippet = Snippet(
+        title="Test Gist",
+        code="print('Test Gist')",
+    )
+    mock_repo.get.return_value = sample_snippet
+
+    orig_error = Exception("SQL Alchemy error")
+    repo_error = RepositoryError("Repository error")
+    repo_error.__cause__ = orig_error
+    mock_repo.get.side_effect = repo_error
+
+    result = runner.invoke(
+        app,
+        [
+            "create-gist",
+            "--snippet-id",
+            1,
+            "--is-public",
+        ],
+    )
+    assert result.exit_code == 1
+    mock_repo.get.assert_called_once()
+    assert "\nSQL Alchemy error" in strip_ansi(result.stdout)
+
+
 def test_delete_snippet(mock_repo):
     """Test deleting snippet"""
     snippet = Snippet(
@@ -160,6 +226,67 @@ def test_delete_snippet_operational_error(mock_repo):
     assert result.exit_code == 1
     assert "Operational Error" in result.stdout
     mock_repo.delete.assert_called_once_with(1)
+
+
+def test_delete_record_fails_with_database_connection_error(mock_repo):
+    """
+    Test delete_record command that handles Database Connection Error;
+    this command is called inside delete_gist()
+    """
+
+    sample_snippet = Snippet(
+        title="Test Gist",
+        code="print('Test Gist')",
+    )
+    mock_repo.get.return_value = sample_snippet
+
+    orig_error = Exception("Database connection error")
+    db_error = DatabaseConnectionError("Database connection error")
+    db_error.__cause__ = orig_error
+    mock_repo.get.side_effect = db_error
+
+    result = runner.invoke(
+        app,
+        [
+            "delete-gist",
+            "--snippet-id",
+            1,
+        ],
+    )
+
+    assert result.exit_code == 1
+    mock_repo.get.assert_called_once()
+    assert "Database connection error" in strip_ansi(result.stdout)
+
+
+def test_delete_record_fails_with_repository_error(mock_repo):
+    """
+    Test delete_record command, which inserts the gist to handle Repository Error;
+    this command is called inside delete_gist()
+    """
+
+    sample_snippet = Snippet(
+        title="Test Gist",
+        code="print('Test Gist')",
+    )
+    mock_repo.get.return_value = sample_snippet
+
+    orig_error = Exception("SQL Alchemy error")
+    repo_error = RepositoryError("Repository error")
+    repo_error.__cause__ = orig_error
+    mock_repo.get.side_effect = repo_error
+
+    result = runner.invoke(
+        app,
+        [
+            "delete-gist",
+            "--snippet-id",
+            1,
+        ],
+    )
+    assert result.exit_code == 1
+    mock_repo.get.assert_called_once()
+    assert "\nSQL Alchemy error" in strip_ansi(result.stdout)
 
 
 def test_search_snippets(mock_repo):
@@ -288,8 +415,8 @@ def test_tags_not_found(mock_repo):
     assert "snippet '999' not found" in strip_ansi(result.stdout.lower())
 
 
-def test_add_gist(mock_repo):
-    """Test adding a gist"""
+def test_create_gist(mock_repo):
+    """Test creating a gist"""
     sample_snippet = Snippet(
         title="Test Gist",
         code="print('Test Gist')",
@@ -300,7 +427,7 @@ def test_add_gist(mock_repo):
     result = runner.invoke(
         app,
         [
-            "gist",
+            "create-gist",
             "--snippet-id",
             1,
             "--is-public",
@@ -319,8 +446,8 @@ def test_add_gist(mock_repo):
     assert "Gist added" in strip_ansi(result.stdout)
 
 
-def test_add_gist_command_fails_when_duplicate_gist_exists(mock_repo):
-    """Test gist command handles duplicate gist error"""
+def test_create_gist_command_fails_when_duplicate_gist_exists(mock_repo):
+    """Test create_gist command handles duplicate gist error"""
 
     sample_snippet = Snippet(
         title="Test Gist",
@@ -333,27 +460,27 @@ def test_add_gist_command_fails_when_duplicate_gist_exists(mock_repo):
     result = runner.invoke(
         app,
         [
-            "gist",
+            "create-gist",
             "--snippet-id",
             1,
             "--is-public",
         ],
     )
-
+    print(result)
     mock_repo.get.assert_called_once_with(1)
     assert result.exit_code == 1
     assert "Duplicate gist found" in result.stdout
 
 
-def test_add_gist_command_fails_when_snippet_not_found(mock_repo):
-    """Test gist command handles snippet not found"""
+def test_create_gist_command_fails_when_snippet_not_found(mock_repo):
+    """Test create command handles snippet not found"""
 
     mock_repo.get.return_value = None
 
     result = runner.invoke(
         app,
         [
-            "gist",
+            "create-gist",
             "--snippet-id",
             1,
             "--is-public",
@@ -363,3 +490,238 @@ def test_add_gist_command_fails_when_snippet_not_found(mock_repo):
     assert result.exit_code == 1
     mock_repo.create_gist.assert_not_called()
     assert "No snippet found" in strip_ansi(result.stdout)
+
+
+def test_create_gist_fails_with_database_connection_error(mock_repo):
+    """
+    Test create_gist command that handles Database Connection Error
+    """
+
+    sample_snippet = Snippet(
+        title="Test Gist",
+        code="print('Test Gist')",
+    )
+    mock_repo.get.return_value = sample_snippet
+
+    orig_error = Exception("Database connection error")
+    db_error = DatabaseConnectionError("Database connection error")
+    db_error.__cause__ = orig_error
+    mock_repo.create_gist.side_effect = db_error
+
+    result = runner.invoke(
+        app,
+        [
+            "create-gist",
+            "--snippet-id",
+            1,
+            "--is-public",
+        ],
+    )
+
+    assert result.exit_code == 1
+    mock_repo.create_gist.assert_called_once()
+    assert "Database connection error" in strip_ansi(result.stdout)
+
+
+def test_create_gist_fails_with_repository_error(mock_repo):
+    """
+    Test create_gist command, which inserts the gist to handle Repository Error
+    """
+
+    sample_snippet = Snippet(
+        title="Test Gist",
+        code="print('Test Gist')",
+    )
+    mock_repo.get.return_value = sample_snippet
+
+    orig_error = Exception("SQL Alchemy error")
+    repo_error = RepositoryError("Repository error")
+    repo_error.__cause__ = orig_error
+    mock_repo.create_gist.side_effect = repo_error
+
+    result = runner.invoke(
+        app,
+        [
+            "create-gist",
+            "--snippet-id",
+            1,
+            "--is-public",
+        ],
+    )
+    assert result.exit_code == 1
+    mock_repo.create_gist.assert_called_once()
+    assert "\nSQL Alchemy error" in strip_ansi(result.stdout)
+
+
+def test_delete_gist_command(mock_repo):
+    """Test deleting a gist"""
+
+    result = runner.invoke(
+        app,
+        [
+            "delete-gist",
+            "--snippet-id",
+            1,
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "Gist deleted" in result.stdout
+
+
+def test_delete_gist_command_with_gist_missing(mock_repo):
+    """Test deleting non-existent gist"""
+
+    mock_repo.get.side_effect = GistNotFoundError("Gist not found")
+    result = runner.invoke(
+        app,
+        [
+            "delete-gist",
+            "--snippet-id",
+            1,
+        ],
+        obj=mock_repo,
+    )
+    mock_repo.get.assert_called_once_with(1)
+    assert result.exit_code == 1
+    assert "Gist not found" in strip_ansi(result.stdout)
+
+
+def test_delete_gist_command_with_repository_error(mock_repo):
+    """Test deleting gist that fails due to repository error"""
+
+    sample_snippet = Snippet(
+        title="Test Gist",
+        code="print('Test Gist')",
+    )
+
+    mock_repo.get.return_value = sample_snippet
+
+    mock_repo.delete_gist.side_effect = RepositoryError("Repository error")
+    result = runner.invoke(
+        app,
+        [
+            "delete-gist",
+            "--snippet-id",
+            1,
+        ],
+        obj=mock_repo,
+    )
+    mock_repo.delete_gist.assert_called_once_with(1)
+    assert result.exit_code == 1
+    assert "Repository error" in strip_ansi(result.stdout)
+
+
+def test_delete_gist_fails_with_database_connection_error(mock_repo):
+    """
+    Test delete_gist command that handles Database Connection Error
+    """
+
+    orig_error = Exception("Database connection error")
+    db_error = DatabaseConnectionError("Database connection error")
+    db_error.__cause__ = orig_error
+    mock_repo.delete_gist.side_effect = db_error
+
+    result = runner.invoke(
+        app,
+        [
+            "delete-gist",
+            "--snippet-id",
+            1,
+        ],
+    )
+
+    assert result.exit_code == 1
+    mock_repo.delete_gist.assert_called_once()
+    assert "Database connection error" in strip_ansi(result.stdout)
+
+
+def test_delete_gist_fails_with_repository_error(mock_repo):
+    """
+    Test delete_gist command, which inserts the gist to handle Repository Error
+    """
+
+    orig_error = Exception("SQL Alchemy error")
+    repo_error = RepositoryError("Repository error")
+    repo_error.__cause__ = orig_error
+    mock_repo.delete_gist.side_effect = repo_error
+
+    result = runner.invoke(
+        app,
+        [
+            "delete-gist",
+            "--snippet-id",
+            1,
+        ],
+    )
+    assert result.exit_code == 1
+    mock_repo.delete_gist.assert_called_once()
+    assert "\nSQL Alchemy error" in strip_ansi(result.stdout)
+
+
+def test_list_gist(mock_repo, mocker):
+    """Test listing gists"""
+    gist = Gist(
+        id=1,
+        snippet_id=1,
+        gist_id="Test",
+        gist_url="http://gist.github.com/test",
+        status=GistStatus.UNKNOWN,
+    )
+    mock_repo.list_gist.return_value = [gist]
+
+    result = runner.invoke(app, ["list-gist"])
+    assert result.exit_code == 0
+    assert r"http://gist" in strip_ansi(result.stdout)
+
+
+def test_list_empty_gist(mock_repo):
+    """Test listing non-existent gists"""
+    mock_repo.list_gist.return_value = []
+
+    result = runner.invoke(app, ["list-gist"])
+    assert result.exit_code == 0
+    assert "No gists found" in strip_ansi(result.stdout)
+
+
+def test_list_gist_fails_with_database_connection_error(mock_repo):
+    """
+    Test list_gist command that handles Database Connection Error
+    """
+
+    orig_error = Exception("Database connection error")
+    db_error = DatabaseConnectionError("Database connection error")
+    db_error.__cause__ = orig_error
+    mock_repo.list_gist.side_effect = db_error
+
+    result = runner.invoke(
+        app,
+        [
+            "list-gist",
+        ],
+    )
+
+    assert result.exit_code == 1
+    mock_repo.list_gist.assert_called_once()
+    assert "Database connection error" in strip_ansi(result.stdout)
+
+
+def test_list_gist_fails_with_repository_error(mock_repo):
+    """
+    Test list_gist command, which inserts the gist to handle Repository Error
+    """
+
+    orig_error = Exception("SQL Alchemy error")
+    repo_error = RepositoryError("Repository error")
+    repo_error.__cause__ = orig_error
+    mock_repo.list_gist.side_effect = repo_error
+
+    result = runner.invoke(
+        app,
+        [
+            "list-gist",
+        ],
+    )
+    assert result.exit_code == 1
+    mock_repo.list_gist.assert_called_once()
+    assert "\nSQL Alchemy error" in strip_ansi(result.stdout)
