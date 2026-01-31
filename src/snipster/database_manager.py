@@ -346,7 +346,8 @@ class DatabaseManager:
                 model_obj = record.one()
 
                 setattr(model_obj, col, value)
-                setattr(model_obj, "updated_at", datetime.now(timezone.utc))
+                if hasattr(model_obj, "updated_at"):
+                    setattr(model_obj, "updated_at", datetime.now(timezone.utc))
                 session.add(model_obj)
                 session.commit()
                 session.refresh(model_obj)
