@@ -241,9 +241,18 @@ class SQLModelRepository(SnippetRepository):
                 f"{GIST_BASE_URL}/{gist_id}",
                 headers={"Authorization": f"token {config('GH_TOKEN')}"},
             )
-            return response.status_code == 200
-        except httpx.HTTPError:
-            return False
+            if response.status_code == 200:
+                return True
+            elif response.status_code == 404:
+                return False
+            else:
+                response.raise_for_status()
+        except httpx.HTTPStatusError as err:
+            logger.warning(f"GitHub API error {err.response.status_code}: {err}")
+            raise
+        except httpx.HTTPError as err:
+            logger.warning(f"Network error verifying gist: {err}")
+            raise
 
     def _post_gist_on_github(
         self, payload: dict[str, Any], headers: dict[str, Any]
@@ -279,6 +288,7 @@ class SQLModelRepository(SnippetRepository):
                     else:
                         results["deleted"] += 1
                         gist.status = GistStatus.DELETED_ON_GITHUB
+
                     gist.verified_at = datetime.now(timezone.utc)
                     self.db_manager.update(
                         Gist, gist.snippet_id, col="status", value=gist.status
@@ -286,10 +296,16 @@ class SQLModelRepository(SnippetRepository):
                     self.db_manager.update(
                         Gist, gist.snippet_id, col="verified_at", value=gist.verified_at
                     )
-
-                except (httpx.HTTPError, OperationalError, SQLAlchemyError) as err:
-                    logger.error(f"Failed to reconcile gist {gist.gist_id}: {err}")
+                except httpx.HTTPError as err:
+                    logger.error(f"Failed to verify gist {gist.gist_id}: {err}")
                     results["errors"] += 1
+
+                except (OperationalError, SQLAlchemyError) as err:
+                    logger.error(
+                        f"Database error reconciling gist {gist.gist_id}: {err}"
+                    )
+                    results["errors"] += 1
+        return results
 
     def get_gist(self, snippet_id: int) -> Gist | None:
         snippet = self.get(snippet_id)
@@ -372,7 +388,7 @@ class SQLModelRepository(SnippetRepository):
 
         gist_url = self._post_gist_on_github(payload, headers)
 
-        logger.info("Store gist for snippet '{snippet_id}' in database")
+        logger.info(f"Store gist for snippet '{snippet_id}' in database")
         self.add_gist(snippet_id, gist_url, is_public)
 
         return gist_url
