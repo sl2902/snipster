@@ -525,15 +525,16 @@ def test_verify_gist_exists_returns_false_when_gist_not_found(repo, mocker):
 def test_verify_gist_exists_returns_false_on_http_error(repo, mocker):
     """Test _verify_gist_exists returns False when HTTP error occurs"""
 
+    mock_logger = mocker.patch("snipster.repositories.sql_model_repository.logger")
     mock_config = mocker.patch("snipster.repositories.sql_model_repository.config")
     mock_config.return_value = "test_token"
 
     mock_get = mocker.patch("snipster.repositories.sql_model_repository.httpx.get")
     mock_get.side_effect = httpx.HTTPError("Connection error")
 
-    result = repo._verify_gist_exists("test")
-
-    assert result is False
+    with pytest.raises(httpx.HTTPError, match="Connection error"):
+        repo._verify_gist_exists("test")
+    mock_logger.warning.assert_called_once()
 
 
 def test_add_gist_fails_when_snippet_not_found(repo):
@@ -792,12 +793,13 @@ def test_list_gist_fails_with_http_error(repo, mocker):
     )
 
     gists = repo.list_gist()
+
     assert len(gists) == 1
     # gist status remains unchanged
     assert gists[0].status == GistStatus.ACTIVE
     mock_logger.error.assert_called()
     err_msg = mock_logger.error.call_args_list[0]
-    assert "Failed to reconcile gist" in str(err_msg)
+    assert "Failed to verify gist" in str(err_msg)
 
 
 def test_list_gist_fails_with_sqlalchemy_error(repo, mocker):
@@ -819,7 +821,7 @@ def test_list_gist_fails_with_sqlalchemy_error(repo, mocker):
     assert gists[0].status == GistStatus.ACTIVE
     mock_logger.error.assert_called()
     err_msg = mock_logger.error.call_args_list[0]
-    assert "Failed to reconcile gist" in str(err_msg)
+    assert "Database error reconciling gist" in str(err_msg)
 
 
 def test_list_gist_fails_with_operational_error(repo, mocker):
@@ -845,7 +847,7 @@ def test_list_gist_fails_with_operational_error(repo, mocker):
     assert gists[0].status == GistStatus.ACTIVE
     mock_logger.error.assert_called()
     err_msg = mock_logger.error.call_args_list[0]
-    assert "Failed to reconcile gist" in str(err_msg)
+    assert "Database error reconciling gist" in str(err_msg)
 
 
 @pytest.mark.parametrize(
