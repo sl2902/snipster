@@ -5,8 +5,15 @@ from loguru import logger
 from pydantic_core import ValidationError as PydanticValidationError
 
 from snipster.api.dependencies import get_repo
-from snipster.api.schemas import MessageResponse, SnippetCreate, SnippetResponse
+from snipster.api.schemas import (
+    GistCreate,
+    MessageResponse,
+    SnippetCreate,
+    SnippetResponse,
+)
 from snipster.exceptions import (
+    DatabaseConnectionError,
+    DuplicateGistError,
     DuplicateSnippetError,
     MultipleSnippetsFoundError,
     RepositoryError,
@@ -15,10 +22,11 @@ from snipster.exceptions import (
 from snipster.models import Snippet
 from snipster.repositories.repository import SnippetRepository
 
-router = APIRouter()
+SNIPPETS = APIRouter(tags=["Snippets"])
+GISTS = APIRouter(tags=["Gists"])
 
 
-@router.post(
+@SNIPPETS.post(
     "/snippets/v1/", response_model=MessageResponse, status_code=status.HTTP_201_CREATED
 )
 def create_snippet(
@@ -46,7 +54,7 @@ def create_snippet(
     return {"message": f"Successfully created Snippet with title '{db_snippet.title}'"}
 
 
-@router.get("/snippets/v1/list/", response_model=list[SnippetResponse])
+@SNIPPETS.get("/snippets/v1/list/", response_model=list[SnippetResponse])
 def list_snippets(*, repo: SnippetRepository = Depends(get_repo)):
     try:
         snippets = repo.list()
@@ -62,7 +70,7 @@ def list_snippets(*, repo: SnippetRepository = Depends(get_repo)):
         )
 
 
-@router.get("/snippets/v1/{snippet_id}", response_model=SnippetResponse)
+@SNIPPETS.get("/snippets/v1/{snippet_id}", response_model=SnippetResponse)
 def get_snippet(*, repo: SnippetRepository = Depends(get_repo), snippet_id: int):
     try:
         snippet = repo.get(snippet_id)
@@ -78,7 +86,7 @@ def get_snippet(*, repo: SnippetRepository = Depends(get_repo), snippet_id: int)
         )
 
 
-@router.delete("/snippets/v1/{snippet_id}", response_model=MessageResponse)
+@SNIPPETS.delete("/snippets/v1/{snippet_id}", response_model=MessageResponse)
 def delete_snippet(*, repo: SnippetRepository = Depends(get_repo), snippet_id: int):
     try:
         repo.delete(snippet_id)
@@ -100,7 +108,7 @@ def delete_snippet(*, repo: SnippetRepository = Depends(get_repo), snippet_id: i
     return {"message": f"Snippet '{snippet_id}' deleted successfully"}
 
 
-@router.get("/snippets/v1/search/", response_model=list[SnippetResponse])
+@SNIPPETS.get("/snippets/v1/search/", response_model=list[SnippetResponse])
 def search_snippets(
     *,
     repo: SnippetRepository = Depends(get_repo),
@@ -124,7 +132,7 @@ def search_snippets(
         )
 
 
-@router.post("/snippets/v1/{snippet_id}/favourite", response_model=MessageResponse)
+@SNIPPETS.post("/snippets/v1/{snippet_id}/favourite", response_model=MessageResponse)
 def toggle_favourite(*, repo: SnippetRepository = Depends(get_repo), snippet_id: int):
     try:
         favourited = repo.toggle_favourite(snippet_id)
@@ -142,7 +150,7 @@ def toggle_favourite(*, repo: SnippetRepository = Depends(get_repo), snippet_id:
     return {"message": f"Snippet '{snippet_id}' is {action}"}
 
 
-@router.post("/snippets/v1/{snippet_id}/tags", response_model=MessageResponse)
+@SNIPPETS.post("/snippets/v1/{snippet_id}/tags", response_model=MessageResponse)
 def tag_snippet(
     *,
     repo: SnippetRepository = Depends(get_repo),
@@ -168,3 +176,57 @@ def tag_snippet(
             "message": f"Successfully removed the following tags '{", ".join(tags)}' for snippet '{snippet_id}'"
         }
     return {"message": f"Successfully tagged snippet '{snippet_id}'"}
+
+
+@GISTS.post(
+    "/gists/v1/",
+    response_model=MessageResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_gist(*, repo: SnippetRepository = Depends(get_repo), gist: GistCreate):
+    gist_data = gist.model_dump()
+    logger.debug(f"Gist create request {gist_data}")
+    snippet_id = gist_data.get("snippet_id")
+    is_public = gist_data.get("is_public")
+
+    try:
+        snippet = repo.get(snippet_id)
+        if not snippet:
+            logger.debug(f"Snippet '{snippet_id}' not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Snippet '{snippet_id}' not found",
+            )
+    except (DatabaseConnectionError, RepositoryError) as err:
+        logger.debug("Repository error")
+        if err.__cause__:
+            logger.debug(f"{err.__cause__}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Gist creation failed due to repository error",
+        )
+
+    try:
+        repo.create_gist(
+            snippet_id,
+            snippet.code,
+            snippet.title,
+            snippet.language,
+            is_public=is_public,
+        )
+        logger.debug(f"Gist added for snippet '{snippet_id}'")
+    except DuplicateGistError:
+        logger.debug(f"Duplicate gist found for snippet '{snippet_id}'")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Duplicate gist found for snippet '{snippet_id}'",
+        )
+    except (DatabaseConnectionError, RepositoryError) as err:
+        logger.debug("Repository error")
+        if err.__cause__:
+            logger.debug(f"{err.__cause__}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Gist creation failed due to repository error",
+        )
+    return {"message": f"Successfully created Gist with title '{snippet.title}'"}
