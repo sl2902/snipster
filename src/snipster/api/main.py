@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from snipster.api.routes import router
+from snipster.api.routes import GISTS, SNIPPETS
 from snipster.repositories.backend import create_repository
 
 
@@ -18,4 +18,5 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-app.include_router(router)
+app.include_router(SNIPPETS, tags=["Snippets"])
+app.include_router(GISTS, tags=["Gists"])
