@@ -8,3 +8,6 @@ coverage:
 
 coverage-html:
 	uv run pytest --cov=src --cov-report=html
+
+run-fastapi:
+	uvicorn snipster.api.main:app --reload
