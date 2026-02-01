@@ -34,7 +34,7 @@ def client(sql_repo):
     """Instantiate TestClient"""
 
     app = FastAPI()
-    app.include_router(routes.router)
+    app.include_router(routes.SNIPPETS)
 
     app.dependency_overrides[get_repo] = lambda: sql_repo
 
