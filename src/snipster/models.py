@@ -87,12 +87,6 @@ class GistBase(SQLModel):
     )
     gist_id: str = Field(..., description="GitHub Gist ID")
     gist_url: str = Field(..., description="Full GitHub Gist URL")
-
-
-class Gist(GistBase, table=True):
-    """A Gist of a snippet"""
-
-    id: int | None = Field(default=None, primary_key=True)
     is_public: bool = Field(
         default=True, description="Whether to make the Gist public or not"
     )
@@ -100,6 +94,12 @@ class Gist(GistBase, table=True):
     verified_at: datetime | None = Field(
         default=None, description="Last verification time"
     )
+
+
+class Gist(GistBase, table=True):
+    """A Gist of a snippet"""
+
+    id: int | None = Field(default=None, primary_key=True)
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         description="Gist creation timestamp",
