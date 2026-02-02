@@ -44,12 +44,9 @@ class GistCreate(SQLModel):
     """Schema for creating a gist"""
 
     snippet_id: int = Field(..., description="SnppetID")
-    # gist_url: str = Field(..., description="GitHub gist URL")
     is_public: bool = Field(
         default=True, description="The gist URL is public by default"
     )
-    # status: str = Field(default=GistStatus.UNKNOWN, description="Gist status. Default is unknown")
-    # verified_at: datetime | None = Field(description="Gist last verified at")
 
 
 class GistResponse(GistBase):
