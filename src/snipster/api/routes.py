@@ -7,6 +7,7 @@ from pydantic_core import ValidationError as PydanticValidationError
 from snipster.api.dependencies import get_repo
 from snipster.api.schemas import (
     GistCreate,
+    GistResponse,
     MessageResponse,
     SnippetCreate,
     SnippetResponse,
@@ -15,6 +16,7 @@ from snipster.exceptions import (
     DatabaseConnectionError,
     DuplicateGistError,
     DuplicateSnippetError,
+    GistNotFoundError,
     MultipleSnippetsFoundError,
     RepositoryError,
     SnippetNotFoundError,
@@ -230,3 +232,61 @@ def create_gist(*, repo: SnippetRepository = Depends(get_repo), gist: GistCreate
             detail="Gist creation failed due to repository error",
         )
     return {"message": f"Successfully created Gist with title '{snippet.title}'"}
+
+
+@GISTS.get(
+    "/gists/v1/list",
+    response_model=list[GistResponse],
+)
+def list_gists(*, repo: SnippetRepository = Depends(get_repo), active: bool = True):
+    try:
+        gists = repo.list_gist()
+        if gists:
+            if active:
+                active_gists = [gist for gist in gists if gist.status == "active"]
+                logger.debug(
+                    f"{len(active_gists)} active gists found in the repository"
+                )
+                return active_gists
+            else:
+                logger.debug(f"{len(gists)} gists found in the repository")
+                return gists
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="No gists in the repository"
+        )
+    except (DatabaseConnectionError, RepositoryError) as err:
+        logger.debug("Repository error")
+        if err.__cause__:
+            logger.debug(f"{err.__cause__}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Repository error",
+        )
+
+
+@GISTS.delete(
+    "/gists/v1/{snippet_id}/",
+    response_model=MessageResponse,
+)
+def delete_gist(*, repo: SnippetRepository = Depends(get_repo), snippet_id: int):
+    try:
+        repo.delete_gist(snippet_id)
+        logger.debug(f"Gist with snippet id '{snippet_id}' deleted successfully")
+    except GistNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Gist with snippet id '{snippet_id}' not found",
+        )
+    except MultipleSnippetsFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Multiple gists found for snippet id '{snippet_id}'",
+        )
+    except (DatabaseConnectionError, RepositoryError) as err:
+        logger.debug("Repository error")
+        if err.__cause__:
+            logger.debug(f"{err.__cause__}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Repository error"
+        )
+    return {"message": f"Gist with snippet id '{snippet_id}' deleted successfully"}
